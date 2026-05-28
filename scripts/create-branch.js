@@ -58,23 +58,23 @@ async function fetchJiraIssue(ticket) {
 // ─── GitHub ───────────────────────────────────────────────────────────────────
 async function getDevelopSHA(repo) {
   const { GITHUB_PAT, GITHUB_ORG } = process.env;
-  const url = `https://api.github.com/repos/${GITHUB_ORG}/${repo}/git/ref/heads/Develop`;
-
-  try {
-    const { data } = await axios.get(url, {
-      headers: {
-        Authorization: `Bearer ${GITHUB_PAT}`,
-        Accept: 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
-    });
-    return data.object.sha;
-  } catch (err) {
-    const status = err.response && err.response.status;
-    if (status === 401) throw new Error('GitHub authentication failed. Check GITHUB_PAT.');
-    if (status === 404) throw new Error('Branch "Develop" not found in repo "' + GITHUB_ORG + '/' + repo + '".'); 
-    throw new Error('GitHub API error (' + (status || 'network') + '): ' + err.message);
+  const headers = {
+    Authorization: `Bearer ${GITHUB_PAT}`,
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+  };
+  for (const branchName of ['Develop', 'develop']) {
+    try {
+      const url = `https://api.github.com/repos/${GITHUB_ORG}/${repo}/git/ref/heads/${branchName}`;
+      const { data } = await axios.get(url, { headers });
+      return data.object.sha;
+    } catch (err) {
+      const status = err.response && err.response.status;
+      if (status === 401) throw new Error('GitHub authentication failed. Check GITHUB_PAT.');
+      if (status !== 404) throw new Error('GitHub API error (' + (status || 'network') + '): ' + err.message);
+    }
   }
+  throw new Error('Neither "Develop" nor "develop" branch found in repo "' + GITHUB_ORG + '/' + repo + '".')
 }
 
 async function createGitHubBranch(repo, branchName, sha) {

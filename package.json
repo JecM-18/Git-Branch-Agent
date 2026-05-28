@@ -5,7 +5,8 @@
   "main": "scripts/create-branch.js",
   "scripts": {
     "create-branch": "node scripts/create-branch.js",
-    "create-mid-branch": "node scripts/create-mid-branch.js"
+    "create-mid-branch": "node scripts/create-mid-branch.js",
+    "log-time": "node scripts/log-time.js"
   },
   "dependencies": {
     "axios": "^1.7.2",
