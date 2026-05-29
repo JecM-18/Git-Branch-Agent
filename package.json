@@ -1,9 +1,10 @@
 {
   "name": "git-branch-agent",
   "version": "1.0.0",
-  "description": "VS Code Copilot agent that creates GitHub branches from Jira ticket numbers",
-  "main": "scripts/create-branch.js",
+  "description": "Desktop app to create GitHub branches from Jira tickets and log work time",
+  "main": "main.js",
   "scripts": {
+    "start": "electron .",
     "create-branch": "node scripts/create-branch.js",
     "create-mid-branch": "node scripts/create-mid-branch.js",
     "log-time": "node scripts/log-time.js"
@@ -11,5 +12,8 @@
   "dependencies": {
     "axios": "^1.7.2",
     "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "electron": "^13.6.9"
   }
 }

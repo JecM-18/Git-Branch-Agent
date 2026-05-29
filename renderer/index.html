@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <title>Git Branch Agent</title>
+  <style>
+    /* ─── Variables ─────────────────────────────────────────────────────── */
+    :root {
+      --bg:           #0d0d1a;
+      --surface:      #16162a;
+      --surface2:     #1f1f38;
+      --surface3:     #282845;
+      --accent:       #7c3aed;
+      --accent-hover: #6d28d9;
+      --text:         #e2e8f0;
+      --text-muted:   #64748b;
+      --border:       #2a2a48;
+      --success:      #22c55e;
+      --error:        #ef4444;
+      --warning:      #f59e0b;
+      --info:         #60a5fa;
+    }
+
+    /* ─── Reset ──────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      font-size: 14px;
+      -webkit-app-region: no-drag;
+    }
+
+    /* ─── Header ─────────────────────────────────────────────────────────── */
+    .header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 20px;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .header-logo { font-size: 18px; }
+    .header-title { font-weight: 700; font-size: 15px; letter-spacing: 0.2px; }
+    .header-sub {
+      margin-left: auto;
+      font-size: 11px;
+      color: var(--text-muted);
+      background: var(--surface2);
+      padding: 3px 8px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+    }
+
+    /* ─── Tabs ───────────────────────────────────────────────────────────── */
+    .tabs {
+      display: flex;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 16px;
+      flex-shrink: 0;
+    }
+    .tab {
+      padding: 10px 14px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--text-muted);
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+      user-select: none;
+      white-space: nowrap;
+    }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+    /* ─── Content ────────────────────────────────────────────────────────── */
+    .content { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+
+    .tab-panel {
+      display: none;
+      flex-direction: column;
+      gap: 14px;
+      padding: 20px;
+      flex: 1;
+      overflow-y: auto;
+    }
+    .tab-panel.active { display: flex; }
+
+    /* ─── Card ───────────────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+    }
+    .card-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+    .card-desc { font-size: 12px; color: var(--text-muted); line-height: 1.6; }
+    .card-desc code {
+      background: var(--surface3);
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-family: Consolas, monospace;
+      font-size: 11px;
+      color: var(--info);
+    }
+
+    /* ─── Form ───────────────────────────────────────────────────────────── */
+    .form-group { display: flex; flex-direction: column; gap: 5px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+
+    input, select {
+      background: var(--surface3);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 9px 12px;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      font-family: inherit;
+      width: 100%;
+    }
+    input:focus, select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.2);
+    }
+    input::placeholder { color: var(--text-muted); font-size: 13px; }
+    select { appearance: none; cursor: pointer; }
+    select option { background: var(--surface2); }
+
+    .hint {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+      line-height: 1.4;
+    }
+    .hint a {
+      color: var(--accent);
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .hint a:hover { text-decoration: underline; }
+
+    /* ─── Button ─────────────────────────────────────────────────────────── */
+    .btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 10px 22px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      align-self: flex-start;
+    }
+    .btn:hover:not(:disabled) { background: var(--accent-hover); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-secondary {
+      background: var(--surface3);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover:not(:disabled) { background: var(--surface2); }
+
+    /* ─── Spinner ────────────────────────────────────────────────────────── */
+    .spinner {
+      width: 13px; height: 13px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── Saved badge ────────────────────────────────────────────────────── */
+    .saved-badge {
+      background: rgba(34,197,94,0.12);
+      border: 1px solid var(--success);
+      color: var(--success);
+      padding: 5px 12px;
+      border-radius: 5px;
+      font-size: 12px;
+      font-weight: 600;
+      display: none;
+      align-items: center;
+      gap: 6px;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .saved-badge.show { display: flex; opacity: 1; }
+
+    /* ─── Select wrapper ─────────────────────────────────────────────────── */
+    .select-wrapper { position: relative; }
+    .select-wrapper::after {
+      content: '▾';
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      pointer-events: none;
+      font-size: 12px;
+    }
+
+    /* ─── Output log ─────────────────────────────────────────────────────── */
+    .output-section {
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .output-header {
+      background: var(--surface);
+      padding: 6px 16px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .status-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--text-muted);
+      flex-shrink: 0;
+      transition: background 0.3s;
+    }
+    .status-dot.running  { background: var(--warning); animation: pulse 1s ease-in-out infinite; }
+    .status-dot.success  { background: var(--success); }
+    .status-dot.error    { background: var(--error); }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+
+    .clear-btn {
+      margin-left: auto;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+    .clear-btn:hover { color: var(--text); background: var(--surface2); }
+
+    .output-log {
+      height: 150px;
+      background: #070711;
+      font-family: 'Cascadia Code', 'Fira Code', Consolas, 'Courier New', monospace;
+      font-size: 12px;
+      padding: 10px 14px;
+      overflow-y: auto;
+      line-height: 1.7;
+      flex-shrink: 0;
+    }
+    .log-line { white-space: pre-wrap; word-break: break-all; }
+    .log-line.stdout  { color: #a8d8a8; }
+    .log-line.stderr  { color: #f87171; }
+    .log-line.info    { color: #93c5fd; }
+    .log-line.success { color: #4ade80; font-weight: 700; }
+    .log-line.error   { color: #f87171; font-weight: 700; }
+
+    /* ─── Scrollbar ──────────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <span class="header-logo">🌿</span>
+    <span class="header-title">Git Branch Agent</span>
+    <span class="header-sub">Jira × GitHub</span>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab active" data-tab="create-branch">Create Branch</div>
+    <div class="tab" data-tab="create-mid">Create Mid Branch</div>
+    <div class="tab" data-tab="log-time">Log Time</div>
+    <div class="tab" data-tab="settings">⚙ Settings</div>
+  </div>
+
+  <!-- Content -->
+  <div class="content">
+
+    <!-- ── Create Branch ── -->
+    <div class="tab-panel active" id="panel-create-branch">
+      <div class="card">
+        <div class="card-title">Create Branch from Ticket</div>
+        <div class="card-desc">
+          Creates a <code>feature/</code> or <code>bug/</code> branch off <code>develop</code>,
+          named from the Jira ticket summary.
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Jira Ticket</label>
+        <input type="text" id="cb-ticket" placeholder="e.g. AINEX-27" maxlength="30" autocomplete="off" spellcheck="false">
+        <div class="hint">Supported: <strong>AINEX</strong> → rrp &nbsp;|&nbsp; <strong>AIPACT</strong> → contractdb</div>
+      </div>
+      <button class="btn" id="cb-run">
+        <span class="btn-text">Create Branch</span>
+      </button>
+    </div>
+
+    <!-- ── Create Mid Branch ── -->
+    <div class="tab-panel" id="panel-create-mid">
+      <div class="card">
+        <div class="card-title">Create Mid Branch</div>
+        <div class="card-desc">
+          Creates a mid branch off the chosen environment branch, then merges the
+          feature branch into it. Requires that the feature branch already exists.
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Jira Ticket</label>
+        <input type="text" id="mid-ticket" placeholder="e.g. AINEX-27" maxlength="30" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="form-group">
+        <label>Environment</label>
+        <div class="select-wrapper">
+          <select id="mid-env">
+            <option value="staging">Staging</option>
+            <option value="uat">UAT</option>
+            <option value="prod">Production</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn" id="mid-run">
+        <span class="btn-text">Create Mid Branch</span>
+      </button>
+    </div>
+
+    <!-- ── Log Time ── -->
+    <div class="tab-panel" id="panel-log-time">
+      <div class="card">
+        <div class="card-title">Log Work Time on Jira</div>
+        <div class="card-desc">
+          Logs work hours to a Jira ticket worklog. Supports multiple dates in one submission.
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Jira Ticket</label>
+        <input type="text" id="lt-ticket" placeholder="e.g. AINEX-57" maxlength="30" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Time</label>
+          <input type="text" id="lt-time" placeholder="7.5h, 7h30m, 30m, 1d" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label>Date(s)</label>
+          <input type="text" id="lt-date" value="today" autocomplete="off" spellcheck="false">
+          <div class="hint">today · yesterday · last friday<br>Multiple: "last friday, yesterday, today"</div>
+        </div>
+      </div>
+      <button class="btn" id="lt-run">
+        <span class="btn-text">Log Time</span>
+      </button>
+    </div>
+
+    <!-- ── Settings ── -->
+    <div class="tab-panel" id="panel-settings">
+      <div class="card">
+        <div class="card-title">Credentials &amp; Configuration</div>
+        <div class="card-desc">
+          Saved to <code>.env</code> in the app folder. Required before any operation will work.
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Jira Base URL</label>
+        <input type="text" id="s-jira-url" placeholder="https://yourcompany.atlassian.net" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label>Jira Email</label>
+        <input type="email" id="s-jira-email" placeholder="you@example.com" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label>Jira API Token</label>
+        <input type="password" id="s-jira-token" placeholder="Your Atlassian API token" autocomplete="new-password">
+        <div class="hint">
+          <a id="link-jira">Generate at Atlassian Account → Security → API tokens</a>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>GitHub Personal Access Token</label>
+        <input type="password" id="s-github-pat" placeholder="ghp_..." autocomplete="new-password">
+        <div class="hint">
+          <a id="link-github">Generate at GitHub → Settings → Developer settings → PAT</a>
+          &nbsp;(needs <code>repo</code> scope)
+        </div>
+      </div>
+      <div class="form-group">
+        <label>GitHub Organization</label>
+        <input type="text" id="s-github-org" placeholder="your-org-name" autocomplete="off">
+      </div>
+
+      <div style="display:flex; align-items:center; gap:12px; margin-top:4px;">
+        <button class="btn" id="s-save">Save Settings</button>
+        <div class="saved-badge" id="saved-badge">✓ Saved</div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+
+  <!-- Output Log -->
+  <div class="output-section">
+    <div class="output-header">
+      <span class="status-dot" id="status-dot"></span>
+      <span>Output</span>
+      <button class="clear-btn" id="clear-log">Clear</button>
+    </div>
+    <div class="output-log" id="output-log">
+      <div class="log-line info">Ready — configure credentials in Settings before running.</div>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

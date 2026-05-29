@@ -1,0 +1,19 @@
+'use strict';
+
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('electronAPI', {
+  getSettings: () => ipcRenderer.invoke('get-settings'),
+  saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
+
+  createBranch: (ticket) => ipcRenderer.invoke('run-create-branch', ticket),
+  createMidBranch: (ticket, env) =>
+    ipcRenderer.invoke('run-create-mid-branch', ticket, env),
+  logTime: (ticket, time, dateStr) =>
+    ipcRenderer.invoke('run-log-time', ticket, time, dateStr),
+
+  onOutputLine: (callback) =>
+    ipcRenderer.on('output-line', (_, data) => callback(data)),
+
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+});
