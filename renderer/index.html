@@ -308,6 +308,7 @@
     <div class="tab active" data-tab="create-branch">Create Branch</div>
     <div class="tab" data-tab="create-mid">Create Mid Branch</div>
     <div class="tab" data-tab="log-time">Log Time</div>
+    <div class="tab" data-tab="create-pr">Create PR</div>
     <div class="tab" data-tab="settings">⚙ Settings</div>
   </div>
 
@@ -386,6 +387,41 @@
       </div>
       <button class="btn" id="lt-run">
         <span class="btn-text">Log Time</span>
+      </button>
+    </div>
+
+    <!-- ── Create PR ── -->
+    <div class="tab-panel" id="panel-create-pr">
+      <div class="card">
+        <div class="card-title">Create Pull Request</div>
+        <div class="card-desc">
+          For a <code>TICKET</code> (e.g. <code>AINEX-27</code>) → PR targets <strong>Staging</strong>.<br>
+          For a release (e.g. <code>Nexus 3.56.7</code>) → pick <strong>UAT</strong> or <strong>Prod</strong>.<br>
+          Mid branch is used automatically if one exists.
+          If conflicts are detected you will be advised to create a mid branch.
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Ticket or Release</label>
+        <input type="text" id="pr-input" placeholder="AINEX-27  or  Nexus 3.56.7" maxlength="60" autocomplete="off" spellcheck="false">
+        <div class="hint">Ticket → Staging &nbsp;|&nbsp; Release (Nexus / PACT-X + version) → pick environment</div>
+      </div>
+      <div class="form-group" id="pr-env-group" style="display:none">
+        <label>Environment</label>
+        <div class="select-wrapper">
+          <select id="pr-env">
+            <option value="uat">UAT</option>
+            <option value="prod">Production</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Reviewers <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-muted)">(optional)</span></label>
+        <input type="text" id="pr-reviewers" placeholder="github-username, another-user" autocomplete="off" spellcheck="false">
+        <div class="hint">GitHub usernames, comma-separated</div>
+      </div>
+      <button class="btn" id="pr-submit">
+        <span class="btn-text">Create PR</span>
       </button>
     </div>
 

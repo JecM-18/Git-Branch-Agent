@@ -83,6 +83,33 @@ toUpper('cb-ticket');
 toUpper('mid-ticket');
 toUpper('lt-ticket');
 
+// Smart casing for pr-input: uppercase first word only
+(function () {
+  const el = document.getElementById('pr-input');
+  el.addEventListener('input', () => {
+    const val = el.value;
+    const spaceIdx = val.indexOf(' ');
+    let newVal;
+    if (spaceIdx === -1) {
+      newVal = val.toUpperCase();
+    } else {
+      newVal = val.slice(0, spaceIdx).toUpperCase() + val.slice(spaceIdx);
+    }
+    if (newVal !== val) {
+      const pos = el.selectionStart;
+      el.value = newVal;
+      el.setSelectionRange(pos, pos);
+    }
+    updatePrEnvVisibility();
+  });
+}());
+
+function updatePrEnvVisibility() {
+  const val = document.getElementById('pr-input').value.trim().toUpperCase();
+  const isTicket = /^[A-Z]+-\d+$/.test(val);
+  document.getElementById('pr-env-group').style.display = (!val || isTicket) ? 'none' : 'flex';
+}
+
 // ─── Create Branch ────────────────────────────────────────────────────────────
 const cbBtn = document.getElementById('cb-run');
 
@@ -137,6 +164,36 @@ function submit_logTime() {
   if (!time) return showError('Enter a time value (e.g. 7.5h)');
 
   runOperation(ltBtn, () => window.electronAPI.logTime(ticket, time, dateStr));
+}
+
+// ─── Create PR ───────────────────────────────────────────────────────────────
+const prBtn = document.getElementById('pr-submit');
+
+prBtn.addEventListener('click', () => submit_createPR());
+
+document.getElementById('pr-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') submit_createPR();
+});
+
+function submit_createPR() {
+  const raw = document.getElementById('pr-input').value.trim();
+  if (!raw) return showError('Enter a Jira ticket (e.g. AINEX-27) or release (e.g. Nexus 3.56.7)');
+
+  const isTicket = /^[A-Z]+-\d+$/.test(raw.toUpperCase());
+  let input, env;
+
+  if (isTicket) {
+    input = raw.toUpperCase();
+    env   = 'staging'; // ticket PRs always target Staging
+  } else {
+    input = raw;
+    env   = document.getElementById('pr-env').value;
+    if (!env) return showError('Select an environment (UAT or Production) for release PRs.');
+  }
+
+  const reviewers = document.getElementById('pr-reviewers').value.trim();
+
+  runOperation(prBtn, () => window.electronAPI.createPR(input, env, reviewers || ''));
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────

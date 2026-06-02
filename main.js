@@ -108,4 +108,8 @@ ipcMain.handle('run-log-time', (event, ticket, time, dateStr) =>
   runScript(event, 'log-time.js', [ticket, time, dateStr])
 );
 
+ipcMain.handle('run-create-pr', (event, input, env, reviewers) =>
+  runScript(event, 'create-pr.js', [input, env, reviewers])
+);
+
 ipcMain.handle('open-external', (_, url) => shell.openExternal(url));

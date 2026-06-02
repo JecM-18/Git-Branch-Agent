@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   logTime: (ticket, time, dateStr) =>
     ipcRenderer.invoke('run-log-time', ticket, time, dateStr),
 
+  createPR: (input, env, reviewers) => ipcRenderer.invoke('run-create-pr', input, env, reviewers),
+
   onOutputLine: (callback) =>
     ipcRenderer.on('output-line', (_, data) => callback(data)),
 
