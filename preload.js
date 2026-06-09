@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   createPR: (input, env, reviewers) => ipcRenderer.invoke('run-create-pr', input, env, reviewers),
 
+  formatTeamsMessage: (ticket) => ipcRenderer.invoke('run-format-teams-message', ticket),
+
   onOutputLine: (callback) =>
     ipcRenderer.on('output-line', (_, data) => callback(data)),
 

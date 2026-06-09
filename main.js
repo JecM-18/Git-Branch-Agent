@@ -112,4 +112,8 @@ ipcMain.handle('run-create-pr', (event, input, env, reviewers) =>
   runScript(event, 'create-pr.js', [input, env, reviewers])
 );
 
+ipcMain.handle('run-format-teams-message', (event, ticket) =>
+  runScript(event, 'format-teams-message.js', [ticket])
+);
+
 ipcMain.handle('open-external', (_, url) => shell.openExternal(url));

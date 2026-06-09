@@ -1,2 +1,6 @@
 node_modules/
 .env
+dist/
+build/*.ico
+build/*.icns
+build/*.png

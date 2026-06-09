@@ -82,6 +82,7 @@ function validateTicket(val) {
 toUpper('cb-ticket');
 toUpper('mid-ticket');
 toUpper('lt-ticket');
+toUpper('tm-ticket');
 
 // Smart casing for pr-input: uppercase first word only
 (function () {
@@ -195,6 +196,90 @@ function submit_createPR() {
 
   runOperation(prBtn, () => window.electronAPI.createPR(input, env, reviewers || ''));
 }
+
+// ─── Teams Message ────────────────────────────────────────────────────────────
+const tmBtn = document.getElementById('tm-generate');
+const tmCopyBtn = document.getElementById('tm-copy');
+
+tmBtn.addEventListener('click', () => submit_teamsMessage());
+
+document.getElementById('tm-ticket').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') submit_teamsMessage();
+});
+
+async function submit_teamsMessage() {
+  const ticket = document.getElementById('tm-ticket').value.trim().toUpperCase();
+  if (!ticket) return showError('Enter a Jira ticket (e.g. AIPACT-40)');
+  if (!validateTicket(ticket)) return showError('Invalid format — use e.g. AIPACT-40');
+
+  const outputGroup = document.getElementById('tm-output-group');
+  const output = document.getElementById('tm-output');
+  const copyStatus = document.getElementById('tm-copy-status');
+  
+  // Hide output while generating
+  outputGroup.style.display = 'none';
+  copyStatus.style.display = 'none';
+  
+  const span = tmBtn.querySelector('.btn-text');
+  const orig = span.textContent;
+
+  tmBtn.disabled = true;
+  span.innerHTML = '<span class="spinner"></span> Looking for PR…';
+  clearLog();
+  setStatus('running');
+
+  try {
+    await window.electronAPI.formatTeamsMessage(ticket);
+    setStatus('success');
+    
+    // Extract the generated message from the log output
+    // The script outputs the message between separator lines
+    const logText = document.getElementById('output-log').innerText;
+    const lines = logText.split('\n');
+    
+    // Find the message between the separator lines
+    let messageStart = -1;
+    let messageEnd = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].includes('Teams Message Generated:')) {
+        messageStart = i + 2; // Skip the "Generated:" line and separator
+      } else if (messageStart > -1 && lines[i].startsWith('─')) {
+        messageEnd = i;
+        break;
+      }
+    }
+    
+    if (messageStart > -1 && messageEnd > -1) {
+      const message = lines.slice(messageStart, messageEnd).join('\n').trim();
+      output.value = message;
+      outputGroup.style.display = 'flex';
+    } else {
+      throw new Error('Could not extract message from output');
+    }
+    
+  } catch (err) {
+    setStatus('error');
+    logLine('✗ ' + err.message, 'error');
+  } finally {
+    tmBtn.disabled = false;
+    span.textContent = orig;
+  }
+}
+
+tmCopyBtn.addEventListener('click', () => {
+  const output = document.getElementById('tm-output');
+  const copyStatus = document.getElementById('tm-copy-status');
+  
+  navigator.clipboard.writeText(output.value).then(() => {
+    copyStatus.style.display = 'block';
+    logLine('✓ Copied to clipboard!', 'success');
+    setTimeout(() => {
+      copyStatus.style.display = 'none';
+    }, 2000);
+  }).catch((err) => {
+    logLine('✗ Failed to copy: ' + err.message, 'error');
+  });
+});
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
 async function loadSettings() {

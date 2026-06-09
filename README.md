@@ -42,6 +42,17 @@ GITHUB_ORG=cloudstaff-apps
 - **JIRA_API_TOKEN** — Generate from [Atlassian Account Settings](https://id.atlassian.com/manage-profile/security/api-tokens)
 - **GITHUB_PAT** — Generate from [GitHub Settings → Developer settings → Personal access tokens](https://github.com/settings/tokens) (requires `repo` scope)
 
+### 3. Run the application
+
+**Option 1: Desktop App (Windows)**
+```bash
+npm start
+```
+Or double-click `Start App.bat`
+
+**Option 2: Standalone Executable**
+See [PACKAGING-GUIDE.md](PACKAGING-GUIDE.md) for instructions on building a standalone .exe file
+
 ## Usage
 
 ### Via VS Code Copilot (Recommended)
