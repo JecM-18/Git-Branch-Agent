@@ -10,6 +10,8 @@
     "create-branch": "node scripts/create-branch.js",
     "create-mid-branch": "node scripts/create-mid-branch.js",
     "log-time": "node scripts/log-time.js",
+    "create-jira-ticket": "node scripts/create-jira-ticket.js",
+    "get-cost-centers": "node scripts/get-cost-centers.js",
     "build": "electron-builder build --win --publish never",
     "build:all": "electron-builder build --win --mac --linux --publish never",
     "dist": "electron-builder"

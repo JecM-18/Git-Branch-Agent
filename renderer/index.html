@@ -137,11 +137,24 @@
       font-family: inherit;
       width: 100%;
     }
-    input:focus, select:focus {
+    textarea {
+      background: var(--surface3);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 9px 12px;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      font-family: inherit;
+      width: 100%;
+    }
+    input:focus, select:focus, textarea:focus {
       border-color: var(--accent);
       box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.2);
     }
     input::placeholder { color: var(--text-muted); font-size: 13px; }
+    textarea::placeholder { color: var(--text-muted); font-size: 13px; }
     select { appearance: none; cursor: pointer; }
     select option { background: var(--surface2); }
 
@@ -309,6 +322,7 @@
     <div class="tab" data-tab="create-mid">Create Mid Branch</div>
     <div class="tab" data-tab="log-time">Log Time</div>
     <div class="tab" data-tab="create-pr">Create PR</div>
+    <div class="tab" data-tab="create-ticket">Create Jira Ticket</div>
     <div class="tab" data-tab="teams-message">Teams Message</div>
     <div class="tab" data-tab="settings">⚙ Settings</div>
   </div>
@@ -423,6 +437,66 @@
       </div>
       <button class="btn" id="pr-submit">
         <span class="btn-text">Create PR</span>
+      </button>
+    </div>
+
+    <!-- ── Create Jira Ticket ── -->
+    <div class="tab-panel" id="panel-create-ticket">
+      <div class="card">
+        <div class="card-title">Create Jira Ticket</div>
+        <div class="card-desc">
+          Create a new story, task, or support ticket in <strong>AI Nexus (AINEX)</strong> or <strong>AI PactX (AIPACT)</strong> board.
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Project</label>
+        <div class="select-wrapper">
+          <select id="ct-project">
+            <option value="ainex">AI Nexus (AINEX)</option>
+            <option value="aipact">AI PactX (AIPACT)</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Issue Type</label>
+        <div class="select-wrapper">
+          <select id="ct-type">
+            <option value="task">Task</option>
+            <option value="story">Story</option>
+            <option value="support">Support</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Cost Center</label>
+        <div class="select-wrapper">
+          <select id="ct-cost-center">
+            <option value="">-- Select Cost Center --</option>
+            <option value="Research - Expense">Research - Expense</option>
+            <option value="Development - Capitalizable">Development - Capitalizable</option>
+            <option value="Maintenance - Expense">Maintenance - Expense</option>
+            <option value="Enhancement - Expense">Enhancement - Expense</option>
+          </select>
+        </div>
+        <div class="hint">Required for AIPACT tickets</div>
+      </div>
+      <div class="form-group">
+        <label>Title</label>
+        <input type="text" id="ct-title" placeholder="e.g. Implement login feature" maxlength="255" autocomplete="off" spellcheck="false">
+        <div class="hint">Brief summary of the ticket</div>
+      </div>
+      <div class="form-group">
+        <label>Description <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-muted)">(optional)</span></label>
+        <textarea id="ct-description" rows="4" placeholder="Detailed description of the ticket..." style="resize:vertical; font-family: inherit; font-size: 13px; line-height: 1.5; background: var(--surface3); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 10px 12px; width: 100%; outline: none; transition: border-color 0.15s, box-shadow 0.15s;" spellcheck="true"></textarea>
+      </div>
+      <div class="form-group">
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 13px; color: var(--text);">
+          <input type="checkbox" id="ct-assign-to-me" checked style="width: auto; cursor: pointer;">
+          <span>Assign this ticket to me</span>
+        </label>
+      </div>
+      <button class="btn" id="ct-create">
+        <span class="btn-text">Create Ticket</span>
       </button>
     </div>
 

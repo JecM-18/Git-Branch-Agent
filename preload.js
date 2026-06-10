@@ -16,6 +16,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   formatTeamsMessage: (ticket) => ipcRenderer.invoke('run-format-teams-message', ticket),
 
+  createJiraTicket: (project, type, title, description, costCenter, assignToMe) => 
+    ipcRenderer.invoke('run-create-jira-ticket', project, type, title, description, costCenter, assignToMe),
+
   onOutputLine: (callback) =>
     ipcRenderer.on('output-line', (_, data) => callback(data)),
 

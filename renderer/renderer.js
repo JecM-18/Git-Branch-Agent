@@ -197,6 +197,32 @@ function submit_createPR() {
   runOperation(prBtn, () => window.electronAPI.createPR(input, env, reviewers || ''));
 }
 
+// ─── Create Jira Ticket ───────────────────────────────────────────────────────
+const ctBtn = document.getElementById('ct-create');
+
+ctBtn.addEventListener('click', () => submit_createTicket());
+
+['ct-title'].forEach((id) => {
+  document.getElementById(id).addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') submit_createTicket();
+  });
+});
+
+function submit_createTicket() {
+  const project = document.getElementById('ct-project').value.trim();
+  const type = document.getElementById('ct-type').value.trim();
+  const title = document.getElementById('ct-title').value.trim();
+  const description = document.getElementById('ct-description').value.trim();
+  const costCenter = document.getElementById('ct-cost-center').value.trim();
+  const assignToMe = document.getElementById('ct-assign-to-me').checked;
+
+  if (!title) return showError('Enter a title for the ticket');
+  if (title.length < 5) return showError('Title must be at least 5 characters');
+  if (!costCenter) return showError('Please select a cost center');
+
+  runOperation(ctBtn, () => window.electronAPI.createJiraTicket(project, type, title, description || '', costCenter, assignToMe));
+}
+
 // ─── Teams Message ────────────────────────────────────────────────────────────
 const tmBtn = document.getElementById('tm-generate');
 const tmCopyBtn = document.getElementById('tm-copy');

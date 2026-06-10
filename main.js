@@ -116,4 +116,9 @@ ipcMain.handle('run-format-teams-message', (event, ticket) =>
   runScript(event, 'format-teams-message.js', [ticket])
 );
 
+ipcMain.handle('run-create-jira-ticket', (event, project, type, title, description, costCenter, assignToMe) => {
+  const args = [project, type, title, description || '', costCenter || '', assignToMe ? 'true' : 'false'];
+  return runScript(event, 'create-jira-ticket.js', args);
+});
+
 ipcMain.handle('open-external', (_, url) => shell.openExternal(url));
