@@ -193,8 +193,9 @@ function submit_createPR() {
   }
 
   const reviewers = document.getElementById('pr-reviewers').value.trim();
+  const useMid = document.getElementById('pr-use-mid').checked;
 
-  runOperation(prBtn, () => window.electronAPI.createPR(input, env, reviewers || ''));
+  runOperation(prBtn, () => window.electronAPI.createPR(input, env, reviewers || '', useMid));
 }
 
 // ─── Create Jira Ticket ───────────────────────────────────────────────────────

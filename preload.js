@@ -12,7 +12,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   logTime: (ticket, time, dateStr) =>
     ipcRenderer.invoke('run-log-time', ticket, time, dateStr),
 
-  createPR: (input, env, reviewers) => ipcRenderer.invoke('run-create-pr', input, env, reviewers),
+  createPR: (input, env, reviewers, useMid) => ipcRenderer.invoke('run-create-pr', input, env, reviewers, useMid),
 
   formatTeamsMessage: (ticket) => ipcRenderer.invoke('run-format-teams-message', ticket),
 

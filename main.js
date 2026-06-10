@@ -108,9 +108,11 @@ ipcMain.handle('run-log-time', (event, ticket, time, dateStr) =>
   runScript(event, 'log-time.js', [ticket, time, dateStr])
 );
 
-ipcMain.handle('run-create-pr', (event, input, env, reviewers) =>
-  runScript(event, 'create-pr.js', [input, env, reviewers])
-);
+ipcMain.handle('run-create-pr', (event, input, env, reviewers, useMid) => {
+  const args = [input, env, reviewers];
+  if (!useMid) args.push('--no-mid');
+  return runScript(event, 'create-pr.js', args);
+});
 
 ipcMain.handle('run-format-teams-message', (event, ticket) =>
   runScript(event, 'format-teams-message.js', [ticket])

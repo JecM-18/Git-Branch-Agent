@@ -166,16 +166,18 @@ async function checkMergeable(repo, prNumber) {
   return 'unknown';
 }
 
-// Prefer a branch ending in '-mid', otherwise fall back to first result
-function pickBranch(branches) {
-  const mid = branches.find((b) => b.endsWith('-mid'));
-  if (mid) return { branch: mid, isMid: true };
+// Prefer a branch ending in '-mid' if useMid is true, otherwise fall back to first result
+function pickBranch(branches, useMid = true) {
+  if (useMid) {
+    const mid = branches.find((b) => b.endsWith('-mid'));
+    if (mid) return { branch: mid, isMid: true };
+  }
   if (branches.length > 0) return { branch: branches[0], isMid: false };
   return null;
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
-async function run(input, envArg, reviewersArg) {
+async function run(input, envArg, reviewersArg, useMid = true) {
   validateEnv();
 
   const org = process.env.GITHUB_ORG;
@@ -251,7 +253,7 @@ async function run(input, envArg, reviewersArg) {
     allBranches = allBranches.concat(found);
   }
 
-  const picked = pickBranch(allBranches);
+  const picked = pickBranch(allBranches, useMid);
   if (!picked) {
     throw new Error(
       'No branches found matching "' + input + '" in ' + org + '/' + repo + '.\n' +
@@ -307,19 +309,29 @@ async function run(input, envArg, reviewersArg) {
 }
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
-const input     = process.argv[2];
-const env       = process.argv[3];
-const reviewers = process.argv[4];
+const args = process.argv.slice(2);
+const noMidIndex = args.indexOf('--no-mid');
+const useMid = noMidIndex === -1;
+
+// Remove --no-mid flag from args if present
+if (noMidIndex !== -1) {
+  args.splice(noMidIndex, 1);
+}
+
+const input     = args[0];
+const env       = args[1];
+const reviewers = args[2];
 
 if (!input) {
-  console.error('Usage: node scripts/create-pr.js <ticket-or-release> [env] [reviewer1,reviewer2]');
+  console.error('Usage: node scripts/create-pr.js <ticket-or-release> [env] [reviewer1,reviewer2] [--no-mid]');
   console.error('Examples:');
   console.error('  node scripts/create-pr.js AINEX-27 staging johndoe');
   console.error('  node scripts/create-pr.js "Nexus 3.56.7" uat johndoe,janedoe');
+  console.error('  node scripts/create-pr.js AINEX-27 staging johndoe --no-mid  (skips mid branch)');
   process.exit(1);
 }
 
-run(input, env, reviewers).catch((err) => {
+run(input, env, reviewers, useMid).catch((err) => {
   console.error('Error: ' + err.message);
   process.exit(1);
 });

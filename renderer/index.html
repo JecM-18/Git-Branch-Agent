@@ -435,6 +435,13 @@
         <input type="text" id="pr-reviewers" placeholder="github-username, another-user" autocomplete="off" spellcheck="false">
         <div class="hint">GitHub usernames, comma-separated</div>
       </div>
+      <div class="form-group">
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 13px; color: var(--text);">
+          <input type="checkbox" id="pr-use-mid" checked style="width: auto; cursor: pointer;">
+          <span>Use mid branch if available (recommended)</span>
+        </label>
+        <div class="hint">If unchecked, uses the original feature/bug branch instead of a mid branch</div>
+      </div>
       <button class="btn" id="pr-submit">
         <span class="btn-text">Create PR</span>
       </button>
