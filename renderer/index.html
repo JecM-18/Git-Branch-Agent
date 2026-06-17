@@ -284,16 +284,18 @@
     .clear-btn:hover { color: var(--text); background: var(--surface2); }
 
     .output-log {
-      height: 150px;
+      height: 400px;
       background: #070711;
       font-family: 'Cascadia Code', 'Fira Code', Consolas, 'Courier New', monospace;
       font-size: 12px;
-      padding: 10px 14px;
+      padding: 12px 16px;
       overflow-y: auto;
-      line-height: 1.7;
+      line-height: 1.8;
       flex-shrink: 0;
+      user-select: text;
+      cursor: text;
     }
-    .log-line { white-space: pre-wrap; word-break: break-all; }
+    .log-line { white-space: pre-wrap; word-break: break-all; user-select: text; }
     .log-line.stdout  { color: #a8d8a8; }
     .log-line.stderr  { color: #f87171; }
     .log-line.info    { color: #93c5fd; }
@@ -322,6 +324,7 @@
     <div class="tab" data-tab="create-mid">Create Mid Branch</div>
     <div class="tab" data-tab="log-time">Log Time</div>
     <div class="tab" data-tab="create-pr">Create PR</div>
+    <div class="tab" data-tab="review-pr">Review PR</div>
     <div class="tab" data-tab="create-ticket">Create Jira Ticket</div>
     <div class="tab" data-tab="teams-message">Teams Message</div>
     <div class="tab" data-tab="settings">⚙ Settings</div>
@@ -445,6 +448,31 @@
       <button class="btn" id="pr-submit">
         <span class="btn-text">Create PR</span>
       </button>
+    </div>
+
+    <!-- ── Review PR ── -->
+    <div class="tab-panel" id="panel-review-pr">
+      <div class="card">
+        <div class="card-title">Review Pull Request</div>
+        <div class="card-desc">
+          Review a PR by providing a <code>Jira ticket</code> (e.g. <code>AINEX-27</code>) or 
+          <code>GitHub PR URL</code>. The app will fetch PR details, changed files, merge status, and code diff.
+          After reviewing, you can approve the PR.
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Jira Ticket or PR URL</label>
+        <input type="text" id="rpr-input" placeholder="AINEX-27 or https://github.com/org/repo/pull/123" maxlength="200" autocomplete="off" spellcheck="false">
+        <div class="hint">Ticket → auto-detects repo &nbsp;|&nbsp; URL → any repo in your org</div>
+      </div>
+      <div style="display:flex; align-items:center; gap:12px;">
+        <button class="btn" id="rpr-review">
+          <span class="btn-text">Review PR</span>
+        </button>
+        <button class="btn btn-secondary" id="rpr-approve" style="display:none;">
+          <span class="btn-text">✓ Approve PR</span>
+        </button>
+      </div>
     </div>
 
     <!-- ── Create Jira Ticket ── -->
@@ -571,6 +599,45 @@
         <input type="text" id="s-github-org" placeholder="your-org-name" autocomplete="off">
       </div>
 
+      <div class="card" style="margin-top: 20px;">
+        <div class="card-title">🤖 AI-Powered Code Review (Optional)</div>
+        <div class="card-desc">
+          Enable intelligent code analysis during PR reviews. Choose between OpenAI or GitHub Models.
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>AI Provider</label>
+        <div class="select-wrapper">
+          <select id="s-ai-provider">
+            <option value="openai">OpenAI (Recommended)</option>
+            <option value="github">GitHub Models (Preview)</option>
+          </select>
+        </div>
+        <div class="hint">OpenAI requires API key • GitHub Models uses your GitHub token</div>
+      </div>
+
+      <div class="form-group" id="openai-key-group">
+        <label>OpenAI API Key <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-muted)">(for OpenAI provider)</span></label>
+        <input type="password" id="s-openai-key" placeholder="sk-..." autocomplete="new-password">
+        <div class="hint">
+          <a id="link-openai">Get API key at platform.openai.com/api-keys</a>
+          &nbsp;• Enables AI review features
+        </div>
+      </div>
+      <div class="form-group">
+        <label>AI Model <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-muted)">(optional)</span></label>
+        <div class="select-wrapper">
+          <select id="s-ai-model">
+            <option value="gpt-4o">GPT-4o (Recommended - Fast & Smart)</option>
+            <option value="gpt-4-turbo">GPT-4 Turbo</option>
+            <option value="gpt-4">GPT-4 (Classic)</option>
+            <option value="gpt-3.5-turbo">GPT-3.5 Turbo (Faster, cheaper)</option>
+          </select>
+        </div>
+        <div class="hint">GPT-4o recommended for best code analysis quality</div>
+      </div>
+
       <div style="display:flex; align-items:center; gap:12px; margin-top:4px;">
         <button class="btn" id="s-save">Save Settings</button>
         <div class="saved-badge" id="saved-badge">✓ Saved</div>
@@ -584,6 +651,7 @@
     <div class="output-header">
       <span class="status-dot" id="status-dot"></span>
       <span>Output</span>
+      <button class="clear-btn" id="copy-log">📋 Copy</button>
       <button class="clear-btn" id="clear-log">Clear</button>
     </div>
     <div class="output-log" id="output-log">

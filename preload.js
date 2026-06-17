@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   createPR: (input, env, reviewers, useMid) => ipcRenderer.invoke('run-create-pr', input, env, reviewers, useMid),
 
+  reviewPR: (input, approve) => ipcRenderer.invoke('run-review-pr', input, approve),
+
   formatTeamsMessage: (ticket) => ipcRenderer.invoke('run-format-teams-message', ticket),
 
   createJiraTicket: (project, type, title, description, costCenter, assignToMe) => 

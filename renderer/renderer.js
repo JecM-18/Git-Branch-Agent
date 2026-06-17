@@ -39,6 +39,23 @@ document.getElementById('clear-log').addEventListener('click', () => {
   setStatus('');
 });
 
+document.getElementById('copy-log').addEventListener('click', () => {
+  const text = outputLog.innerText;
+  if (!text || !text.trim()) {
+    logLine('✗ No output to copy', 'error');
+    return;
+  }
+  navigator.clipboard.writeText(text).then(() => {
+    const originalText = document.getElementById('copy-log').textContent;
+    document.getElementById('copy-log').textContent = '✓ Copied!';
+    setTimeout(() => {
+      document.getElementById('copy-log').textContent = originalText;
+    }, 1500);
+  }).catch((err) => {
+    logLine('✗ Failed to copy: ' + err.message, 'error');
+  });
+});
+
 // Stream output from main process
 window.electronAPI.onOutputLine(({ type, text }) => logLine(text, type));
 
@@ -83,6 +100,21 @@ toUpper('cb-ticket');
 toUpper('mid-ticket');
 toUpper('lt-ticket');
 toUpper('tm-ticket');
+
+// Smart casing for rpr-input: uppercase if ticket pattern, otherwise leave as-is
+(function () {
+  const el = document.getElementById('rpr-input');
+  el.addEventListener('input', () => {
+    const val = el.value;
+    const trimmed = val.trim();
+    // Check if it looks like a ticket (starts with uppercase letters followed by dash and numbers)
+    if (/^[A-Z]+-\d*$/.test(trimmed.toUpperCase())) {
+      const pos = el.selectionStart;
+      el.value = val.toUpperCase();
+      el.setSelectionRange(pos, pos);
+    }
+  });
+}());
 
 // Smart casing for pr-input: uppercase first word only
 (function () {
@@ -196,6 +228,142 @@ function submit_createPR() {
   const useMid = document.getElementById('pr-use-mid').checked;
 
   runOperation(prBtn, () => window.electronAPI.createPR(input, env, reviewers || '', useMid));
+}
+
+// ─── Review PR ────────────────────────────────────────────────────────────────
+const rprReviewBtn = document.getElementById('rpr-review');
+const rprApproveBtn = document.getElementById('rpr-approve');
+let lastReviewInput = '';
+let lastReviewRepo = '';
+let lastReviewPRNumber = '';
+let lastReviewMergeStatus = '';
+let lastReviewCIStatus = '';
+let lastReviewAIStatus = '';
+
+rprReviewBtn.addEventListener('click', () => submit_reviewPR());
+rprApproveBtn.addEventListener('click', () => submit_approvePR());
+
+document.getElementById('rpr-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') submit_reviewPR();
+});
+
+async function submit_reviewPR() {
+  const input = document.getElementById('rpr-input').value.trim();
+  if (!input) return showError('Enter a Jira ticket (e.g. AINEX-27) or GitHub PR URL');
+  
+  // Hide approve button while reviewing
+  rprApproveBtn.style.display = 'none';
+  
+  const span = rprReviewBtn.querySelector('.btn-text');
+  const orig = span.textContent;
+
+  rprReviewBtn.disabled = true;
+  span.innerHTML = '<span class="spinner"></span> Reviewing…';
+  clearLog();
+  setStatus('running');
+
+  try {
+    // Store the input for later approval
+    lastReviewInput = input;
+    
+    await window.electronAPI.reviewPR(input, false);
+    setStatus('success');
+    
+    // Check if review completed successfully by looking for the marker
+    const logText = document.getElementById('output-log').innerText;
+    if (logText.includes('REVIEW_COMPLETE|')) {
+      // Extract repo, PR number, merge status, CI status, and AI status from marker
+      const match = logText.match(/REVIEW_COMPLETE\|([^|]+)\|(\d+)\|(\w+)\|(\w+)\|([\w-]+)/);
+      if (match) {
+        lastReviewRepo = match[1];
+        lastReviewPRNumber = match[2];
+        lastReviewMergeStatus = match[3];
+        lastReviewCIStatus = match[4];
+        lastReviewAIStatus = match[5];
+        rprApproveBtn.style.display = 'inline-flex';
+        logLine('', 'info');
+        logLine('Ready to approve — click "Approve PR" button above.', 'info');
+        
+        // Extra warning if there are conflicts or CI failures
+        if (lastReviewMergeStatus === 'conflict') {
+          logLine('⚠ WARNING: This PR has merge conflicts!', 'error');
+        }
+        if (lastReviewCIStatus === 'failure' || lastReviewCIStatus === 'error') {
+          logLine('⚠ WARNING: CI/CD checks are failing!', 'error');
+        }
+        if (lastReviewAIStatus === 'ai-disabled') {
+          logLine('ℹ AI Review was not available (add OPENAI_API_KEY to .env to enable)', 'info');
+        }
+      }
+    }
+    
+  } catch (err) {
+    setStatus('error');
+    logLine('✗ ' + err.message, 'error');
+  } finally {
+    rprReviewBtn.disabled = false;
+    span.textContent = orig;
+  }
+}
+
+async function submit_approvePR() {
+  if (!lastReviewInput) return showError('Review a PR first before approving');
+  
+  // Build warning message if there are issues
+  let warnings = [];
+  if (lastReviewMergeStatus === 'conflict') {
+    warnings.push('• This PR has merge conflicts');
+  }
+  if (lastReviewCIStatus === 'failure' || lastReviewCIStatus === 'error') {
+    warnings.push('• CI/CD checks are failing');
+  }
+  if (lastReviewCIStatus === 'pending') {
+    warnings.push('• CI/CD checks are still running');
+  }
+  
+  // Show confirmation if there are warnings
+  if (warnings.length > 0) {
+    const confirmed = confirm(
+      'WARNING: This PR has issues:\n\n' +
+      warnings.join('\n') + '\n\n' +
+      'Approving this PR is not recommended.\n' +
+      'Do you still want to approve?'
+    );
+    if (!confirmed) {
+      logLine('Approval cancelled by user.', 'info');
+      return;
+    }
+  }
+  
+  const span = rprApproveBtn.querySelector('.btn-text');
+  const orig = span.textContent;
+
+  rprApproveBtn.disabled = true;
+  span.innerHTML = '<span class="spinner"></span> Approving…';
+  clearLog();
+  setStatus('running');
+
+  try {
+    await window.electronAPI.reviewPR(lastReviewInput, true);
+    setStatus('success');
+    logLine('✓ PR approved successfully!', 'success');
+    
+    // Hide approve button after successful approval
+    rprApproveBtn.style.display = 'none';
+    lastReviewInput = '';
+    lastReviewRepo = '';
+    lastReviewPRNumber = '';
+    lastReviewMergeStatus = '';
+    lastReviewCIStatus = '';
+    lastReviewAIStatus = '';
+    
+  } catch (err) {
+    setStatus('error');
+    logLine('✗ ' + err.message, 'error');
+  } finally {
+    rprApproveBtn.disabled = false;
+    span.textContent = orig;
+  }
 }
 
 // ─── Create Jira Ticket ───────────────────────────────────────────────────────
@@ -316,7 +484,25 @@ async function loadSettings() {
   if (s.JIRA_API_TOKEN)  document.getElementById('s-jira-token').value  = s.JIRA_API_TOKEN;
   if (s.GITHUB_PAT)      document.getElementById('s-github-pat').value  = s.GITHUB_PAT;
   if (s.GITHUB_ORG)      document.getElementById('s-github-org').value  = s.GITHUB_ORG;
+  if (s.OPENAI_API_KEY)  document.getElementById('s-openai-key').value  = s.OPENAI_API_KEY;
+  if (s.AI_MODEL)        document.getElementById('s-ai-model').value    = s.AI_MODEL;
+  if (s.AI_PROVIDER)     document.getElementById('s-ai-provider').value = s.AI_PROVIDER || 'openai';
+  
+  updateAIProviderUI();
 }
+
+function updateAIProviderUI() {
+  const provider = document.getElementById('s-ai-provider').value;
+  const openaiKeyGroup = document.getElementById('openai-key-group');
+  
+  if (provider === 'github') {
+    openaiKeyGroup.style.display = 'none';
+  } else {
+    openaiKeyGroup.style.display = 'flex';
+  }
+}
+
+document.getElementById('s-ai-provider').addEventListener('change', updateAIProviderUI);
 
 document.getElementById('s-save').addEventListener('click', async () => {
   const settings = {
@@ -325,6 +511,9 @@ document.getElementById('s-save').addEventListener('click', async () => {
     JIRA_API_TOKEN:  document.getElementById('s-jira-token').value.trim(),
     GITHUB_PAT:      document.getElementById('s-github-pat').value.trim(),
     GITHUB_ORG:      document.getElementById('s-github-org').value.trim(),
+    OPENAI_API_KEY:  document.getElementById('s-openai-key').value.trim(),
+    AI_MODEL:        document.getElementById('s-ai-model').value.trim(),
+    AI_PROVIDER:     document.getElementById('s-ai-provider').value.trim(),
   };
   await window.electronAPI.saveSettings(settings);
   const badge = document.getElementById('saved-badge');
@@ -339,6 +528,10 @@ document.getElementById('link-jira').addEventListener('click', () => {
 
 document.getElementById('link-github').addEventListener('click', () => {
   window.electronAPI.openExternal('https://github.com/settings/tokens');
+});
+
+document.getElementById('link-openai').addEventListener('click', () => {
+  window.electronAPI.openExternal('https://platform.openai.com/api-keys');
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

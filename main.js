@@ -114,6 +114,12 @@ ipcMain.handle('run-create-pr', (event, input, env, reviewers, useMid) => {
   return runScript(event, 'create-pr.js', args);
 });
 
+ipcMain.handle('run-review-pr', (event, input, approve) => {
+  const args = [input];
+  if (approve) args.push('--approve');
+  return runScript(event, 'review-pr.js', args);
+});
+
 ipcMain.handle('run-format-teams-message', (event, ticket) =>
   runScript(event, 'format-teams-message.js', [ticket])
 );
