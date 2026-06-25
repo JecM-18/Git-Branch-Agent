@@ -438,7 +438,7 @@ async function submit_teamsMessage() {
     for (let i = 0; i < lines.length; i++) {
       if (lines[i].includes('Teams Message Generated:')) {
         messageStart = i + 2; // Skip the "Generated:" line and separator
-      } else if (messageStart > -1 && lines[i].startsWith('─')) {
+      } else if (messageStart > -1 && i > messageStart && lines[i].startsWith('─')) {
         messageEnd = i;
         break;
       }
@@ -542,6 +542,25 @@ function showError(msg) {
   // Scroll log into view
   document.querySelector('.output-section').scrollIntoView({ behavior: 'smooth' });
 }
+
+// ─── Time Reminder Handler ────────────────────────────────────────────────────
+window.electronAPI.onShowLogTimeTab(() => {
+  // Switch to the log time tab
+  document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
+  
+  const logTimeTab = document.querySelector('.tab[data-tab="log-time"]');
+  if (logTimeTab) {
+    logTimeTab.classList.add('active');
+    document.getElementById('panel-log-time').classList.add('active');
+    
+    // Focus on the ticket input field
+    const ticketInput = document.getElementById('lt-ticket');
+    if (ticketInput) {
+      setTimeout(() => ticketInput.focus(), 100);
+    }
+  }
+});
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 loadSettings();

@@ -1,65 +1,10 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, shell, Notification } = require('electron');
-const { spawn } = require('child_process');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
 const ENV_FILE = path.join(__dirname, '.env');
-
-// ─── Time Reminder System ─────────────────────────────────────────────────────
-let lastNotificationDate = {
-  '12': null,  // Track last notification for 12 PM
-  '16': null   // Track last notification for 4 PM
-};
-
-function checkTimeReminders() {
-  const now = new Date();
-  const currentHour = now.getHours();
-  const currentDate = now.toDateString();
-  
-  // Check for 12 PM (12:00)
-  if (currentHour === 12 && lastNotificationDate['12'] !== currentDate) {
-    showLogTimeReminder('12:00 PM');
-    lastNotificationDate['12'] = currentDate;
-  }
-  
-  // Check for 4 PM (16:00)
-  if (currentHour === 16 && lastNotificationDate['16'] !== currentDate) {
-    showLogTimeReminder('4:00 PM');
-    lastNotificationDate['16'] = currentDate;
-  }
-}
-
-function showLogTimeReminder(time) {
-  const notification = new Notification({
-    title: '⏰ Time Logging Reminder',
-    body: `It's ${time}! Don't forget to log your time in Jira.`,
-    urgency: 'normal',
-    timeoutType: 'default'
-  });
-  
-  notification.on('click', () => {
-    const windows = BrowserWindow.getAllWindows();
-    if (windows.length > 0) {
-      const win = windows[0];
-      if (win.isMinimized()) win.restore();
-      win.focus();
-      win.webContents.send('show-log-time-tab');
-    }
-  });
-  
-  notification.show();
-}
-
-// Start checking for time reminders every minute
-function startTimeReminderSystem() {
-  // Check immediately on startup
-  checkTimeReminders();
-  
-  // Then check every minute
-  setInterval(checkTimeReminders, 60000); // 60000ms = 1 minute
-}
 
 // ─── Window ───────────────────────────────────────────────────────────────────
 function createWindow() {
@@ -81,10 +26,7 @@ function createWindow() {
   win.setMenuBarVisibility(false);
 }
 
-app.whenReady().then(() => {
-  createWindow();
-  startTimeReminderSystem();
-});
+app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
@@ -135,21 +77,68 @@ ipcMain.handle('save-settings', (_, settings) => {
 function runScript(event, scriptFile, args) {
   return new Promise((resolve, reject) => {
     const scriptPath = path.join(__dirname, 'scripts', scriptFile);
-    const proc = spawn('node', [scriptPath, ...args], { cwd: __dirname });
+    
+    // Save original console methods and process.argv
+    const originalLog = console.log;
+    const originalError = console.error;
+    const originalExit = process.exit;
+    const originalArgv = process.argv;
+    
+    let exitCode = 0;
+    let hasExited = false;
 
-    proc.stdout.on('data', (d) =>
-      event.sender.send('output-line', { type: 'stdout', text: d.toString() })
-    );
-    proc.stderr.on('data', (d) =>
-      event.sender.send('output-line', { type: 'stderr', text: d.toString() })
-    );
-    proc.on('close', (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`Process exited with code ${code}`));
-    });
-    proc.on('error', (err) =>
-      reject(new Error(`Could not start Node.js: ${err.message}`))
-    );
+    try {
+      // Override console to send output to renderer
+      console.log = (...args) => {
+        const text = args.map(a => String(a)).join(' ') + '\n';
+        event.sender.send('output-line', { type: 'stdout', text });
+        originalLog.apply(console, args);
+      };
+      
+      console.error = (...args) => {
+        const text = args.map(a => String(a)).join(' ') + '\n';
+        event.sender.send('output-line', { type: 'stderr', text });
+        originalError.apply(console, args);
+      };
+
+      // Override process.exit to capture exit code
+      process.exit = (code = 0) => {
+        exitCode = code;
+        hasExited = true;
+        throw new Error(`EXIT_${code}`);
+      };
+
+      // Set up process.argv for the script
+      process.argv = ['node', scriptPath, ...args];
+
+      // Clear module cache for this script to ensure fresh execution
+      delete require.cache[require.resolve(scriptPath)];
+
+      // Load and execute the script
+      require(scriptPath);
+
+      // If script didn't call process.exit, assume success
+      if (!hasExited) {
+        resolve();
+      }
+    } catch (err) {
+      // Check if this is an intentional exit
+      if (err.message && err.message.startsWith('EXIT_')) {
+        if (exitCode === 0) {
+          resolve();
+        } else {
+          reject(new Error(`Script exited with code ${exitCode}`));
+        }
+      } else {
+        reject(err);
+      }
+    } finally {
+      // Restore original functions
+      console.log = originalLog;
+      console.error = originalError;
+      process.exit = originalExit;
+      process.argv = originalArgv;
+    }
   });
 }
 

@@ -265,6 +265,69 @@ async function fetchCIStatus(repo, prNumber) {
 
 // ─── AI Review ────────────────────────────────────────────────────────────────
 
+// Helper to make a single AI API call
+async function callAI(apiBase, apiKey, model, messages, isGitHubModels) {
+  const response = await axios.post(
+    apiBase + '/chat/completions',
+    {
+      model: model,
+      messages: messages,
+      temperature: 0.3,
+      max_tokens: 1000,
+    },
+    {
+      headers: {
+        'Authorization': 'Bearer ' + apiKey,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+  return response.data.choices[0].message.content;
+}
+
+// Split files into chunks for processing
+function chunkFiles(files) {
+  const MAX_LINES_PER_CHUNK = 150;  // Lines per API call (very conservative for GitHub Models API)
+  const MAX_FILES_PER_CHUNK = 3;    // Files per API call (very conservative)
+  
+  // Filter out lock files and sort by importance
+  const reviewableFiles = files
+    .filter(f => f.patch) // Only files with patches
+    .filter(f => !/(package-lock|yarn\.lock|pnpm-lock)\.json$/i.test(f.filename)) // Skip lock files
+    .sort((a, b) => {
+      // Prioritize code files over config files
+      const aIsConfig = /\.(json|md|txt|yml|yaml)$/i.test(a.filename);
+      const bIsConfig = /\.(json|md|txt|yml|yaml)$/i.test(b.filename);
+      if (aIsConfig !== bIsConfig) return aIsConfig ? 1 : -1;
+      return 0; // Keep original order otherwise
+    });
+  
+  const chunks = [];
+  let currentChunk = [];
+  let currentLines = 0;
+  
+  for (const file of reviewableFiles) {
+    const lines = file.patch.split('\n').length;
+    
+    // Start new chunk if limits exceeded
+    if (currentChunk.length >= MAX_FILES_PER_CHUNK || 
+        (currentLines + lines > MAX_LINES_PER_CHUNK && currentChunk.length > 0)) {
+      chunks.push(currentChunk);
+      currentChunk = [];
+      currentLines = 0;
+    }
+    
+    currentChunk.push(file);
+    currentLines += lines;
+  }
+  
+  if (currentChunk.length > 0) {
+    chunks.push(currentChunk);
+  }
+  
+  return chunks;
+}
+
 async function performAIReview(pr, files) {
   const apiKey = process.env.OPENAI_API_KEY || process.env.GITHUB_TOKEN;
   const model = process.env.AI_MODEL || 'gpt-4o';
@@ -275,116 +338,133 @@ async function performAIReview(pr, files) {
     ? 'https://models.inference.ai.azure.com'
     : (process.env.OPENAI_API_BASE || 'https://api.openai.com/v1');
   
-  // Prepare context for AI
+  // Prepare full files summary
   const filesSummary = files.map((f) => {
     const statusIcon = f.status === 'added' ? '[+]' : f.status === 'removed' ? '[-]' : '[~]';
     return `${statusIcon} ${f.filename} (+${f.additions}/-${f.deletions})`;
   }).join('\n');
   
-  // Limit patch size to avoid token limits (max ~8000 lines)
-  let patchContent = '';
-  let lineCount = 0;
-  const MAX_PATCH_LINES = 8000;
+  // Truncate file summary if too long (keep first 50 files)
+  const filesSummaryLines = filesSummary.split('\n');
+  const truncatedFilesSummary = filesSummaryLines.length > 50
+    ? filesSummaryLines.slice(0, 50).join('\n') + `\n[... ${filesSummaryLines.length - 50} more files]`
+    : filesSummary;
   
-  for (const file of files) {
-    if (!file.patch) continue;
-    const lines = file.patch.split('\n');
-    if (lineCount + lines.length > MAX_PATCH_LINES) {
-      patchContent += `\n[... ${files.length - files.indexOf(file)} more files truncated for token limits]\n`;
-      break;
+  // Split files into manageable chunks
+  const chunks = chunkFiles(files);
+  
+  console.log(`  Reviewing ${files.length} files in ${chunks.length} chunk${chunks.length !== 1 ? 's' : ''}...`);
+  
+  const chunkReviews = [];
+  
+  // Review each chunk
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    const chunkNum = i + 1;
+    
+    console.log(`  Processing chunk ${chunkNum}/${chunks.length} (${chunk.length} files)...`);
+    
+    // Build patch content for this chunk with per-file size limits
+    let patchContent = '';
+    const MAX_LINES_PER_FILE = 100; // Truncate individual large files (very conservative)
+    
+    for (const file of chunk) {
+      const lines = file.patch.split('\n');
+      
+      if (lines.length > MAX_LINES_PER_FILE) {
+        // Truncate large files
+        const truncatedPatch = lines.slice(0, MAX_LINES_PER_FILE).join('\n');
+        patchContent += `\n### ${file.filename} ###\n${truncatedPatch}\n[... ${lines.length - MAX_LINES_PER_FILE} more lines omitted - file too large]\n`;
+      } else {
+        patchContent += `\n### ${file.filename} ###\n${file.patch}\n`;
+      }
     }
-    patchContent += `\n### ${file.filename} ###\n${file.patch}\n`;
-    lineCount += lines.length;
-  }
-  
-  const prompt = `You are an expert code reviewer. Analyze this Pull Request and provide a comprehensive review.
+    
+    const chunkFilesList = chunk.map(f => `- ${f.filename}`).join('\n');
+    
+    // Truncate PR description if too long to save payload space
+    const maxDescLength = 500;
+    const truncatedDesc = pr.body.length > maxDescLength 
+      ? pr.body.substring(0, maxDescLength) + '...[truncated]'
+      : pr.body;
+    
+    const prompt = chunks.length === 1 
+      ? `Review this Pull Request.
 
-**PR Information:**
 Title: ${pr.title}
-Description: ${pr.body}
-Author: @${pr.user}
-Branch: ${pr.head} → ${pr.base}
-Files Changed: ${pr.changed_files}
-Lines: +${pr.additions}/-${pr.deletions}
-
-**Changed Files:**
-${filesSummary}
+Files: ${pr.changed_files} changed (+${pr.additions}/-${pr.deletions})
 
 **Code Changes:**
 ${patchContent}
 
-**Provide a structured review with:**
+**Provide:**
+1. Summary (2-3 sentences)
+2. Security Issues (or "None")
+3. Bugs/Issues (or "None")
+4. Best Practices suggestions
 
-1. **Summary**: 2-3 sentence overview of what this PR does
-2. **Code Quality Score**: Rate 1-10 with brief justification
-3. **Security Issues**: List any security vulnerabilities (or "None found")
-4. **Bugs & Issues**: List potential bugs or logic errors (or "None found")
-5. **Best Practices**: Suggest improvements for code quality, performance, or maintainability
-6. **Positive Notes**: Highlight good practices or well-written code
+Be concise.`
+      : `Review PR part ${chunkNum}/${chunks.length}.
 
-**Format your response as:**
-## Summary
-[Your summary here]
+Title: ${pr.title}
 
-## Code Quality Score
-[Score]/10 - [Justification]
+**Code:**
+${patchContent}
 
-## Security Issues
-- [Issue 1] or "None found"
-- [Issue 2]
+**Report:**
+1. Security issues (or "None")
+2. Bugs/issues (or "None")
+3. Best practices
 
-## Bugs & Potential Issues
-- [Issue 1] or "None found"
-- [Issue 2]
+Be brief.`;
 
-## Best Practices & Improvements
-- [Suggestion 1]
-- [Suggestion 2]
-
-## Positive Notes
-- [What's good about this code]
-
-Keep it concise but actionable. Focus on critical issues first.`;
-
-  try {
-    const response = await axios.post(
-      apiBase + '/chat/completions',
-      {
-        model: model,
-        messages: [
+    try {
+      const review = await callAI(
+        apiBase,
+        apiKey,
+        model,
+        [
           {
             role: 'system',
-            content: 'You are an expert code reviewer specializing in finding bugs, security issues, and suggesting best practices. Be thorough but concise.',
+            content: 'Expert code reviewer. Find bugs, security issues, suggest best practices. Be concise.',
           },
           {
             role: 'user',
             content: prompt,
           },
         ],
-        temperature: 0.3,
-        max_tokens: 2000,
-      },
-      {
-        headers: {
-          'Authorization': 'Bearer ' + apiKey,
-          'Content-Type': 'application/json',
-        },
+        isGitHubModels
+      );
+      
+      chunkReviews.push({ chunkNum, review });
+    } catch (err) {
+      const status = err.response && err.response.status;
+      const provider = isGitHubModels ? 'GitHub Models' : 'OpenAI';
+      
+      if (status === 401) throw new Error(provider + ' authentication failed. Check your API key/token in .env');
+      if (status === 413) throw new Error('Request payload too large even after chunking. The individual files are too large. Try reviewing fewer files.');
+      if (status === 429) throw new Error(provider + ' rate limit exceeded. Try again later.');
+      if (status === 400) {
+        const errMsg = err.response.data && err.response.data.error && err.response.data.error.message;
+        throw new Error(provider + ' API error: ' + (errMsg || 'Invalid request'));
       }
-    );
-    
-    return response.data.choices[0].message.content;
-  } catch (err) {
-    const status = err.response && err.response.status;
-    const provider = isGitHubModels ? 'GitHub Models' : 'OpenAI';
-    
-    if (status === 401) throw new Error(provider + ' authentication failed. Check your API key/token in .env');
-    if (status === 429) throw new Error(provider + ' rate limit exceeded. Try again later.');
-    if (status === 400) {
-      const errMsg = err.response.data && err.response.data.error && err.response.data.error.message;
-      throw new Error(provider + ' API error: ' + (errMsg || 'Invalid request'));
+      throw new Error('AI Review failed on chunk ' + chunkNum + ' (' + (status || 'network') + '): ' + err.message);
     }
-    throw new Error('AI Review failed (' + (status || 'network') + '): ' + err.message);
   }
+  
+  // If single chunk, return as-is
+  if (chunkReviews.length === 1) {
+    return chunkReviews[0].review;
+  }
+  
+  // Combine multiple chunk reviews
+  let combinedReview = `## Summary\nThis PR was reviewed in ${chunks.length} parts due to its size.\n\n`;
+  
+  for (const { chunkNum, review } of chunkReviews) {
+    combinedReview += `### Part ${chunkNum}/${chunks.length}\n${review}\n\n`;
+  }
+  
+  return combinedReview;
 }
 
 function displayAIReview(aiReview) {

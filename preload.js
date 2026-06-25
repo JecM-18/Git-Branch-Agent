@@ -24,5 +24,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onOutputLine: (callback) =>
     ipcRenderer.on('output-line', (_, data) => callback(data)),
 
+  onShowLogTimeTab: (callback) =>
+    ipcRenderer.on('show-log-time-tab', () => callback()),
+
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
 });

@@ -111,3 +111,15 @@ Mid branches are created from the environment branch with the feature branch mer
 ## Supported Date Phrases
 
 `today` (default), `yesterday`, `last <weekday>` (e.g. `last tuesday`)
+
+
+
+
+##Installation Setup
+1. Download and run "Git Branch Agent 1.0.0.exe" (portable)
+   OR install using "Git Branch Agent Setup 1.0.0.exe"
+
+2. Create a .env file in the same folder with your credentials
+   (use .env.example as a template)
+
+3. Double-click the app to launch

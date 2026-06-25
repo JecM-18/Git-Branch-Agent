@@ -206,7 +206,15 @@ async function run(input, envArg, reviewersArg, useMid = true) {
     console.log('  Type    : ' + issue.issueType);
 
     prTitle = ticket + ' - ' + issue.summary;
-    prBody  = process.env.JIRA_BASE_URL + '/browse/' + ticket;
+    prBody  = '## ' + ticket + '\n\n' +
+              '**Type:** ' + issue.issueType + '\n' +
+              '**Summary:** ' + issue.summary + '\n\n' +
+              '### Jira Link\n' +
+              process.env.JIRA_BASE_URL + '/browse/' + ticket + '\n\n' +
+              '### Description\n' +
+              '<!-- Add a brief description of the changes made -->\n\n' +
+              '### Testing\n' +
+              '<!-- Describe how this was tested -->\n';
 
     searchPrefixes = ['feature/' + ticket, 'bug/' + ticket];
 
@@ -239,7 +247,16 @@ async function run(input, envArg, reviewersArg, useMid = true) {
     }
 
     prTitle = 'Release ' + version;
-    prBody  = '';
+    prBody  = '## Release ' + version + '\n\n' +
+              '**Project:** ' + projectKey + '\n' +
+              '**Environment:** ' + env.toUpperCase() + '\n' +
+              '**Target Branch:** ' + baseBranch + '\n\n' +
+              '### Release Notes\n' +
+              '<!-- Add release notes here -->\n\n' +
+              '### Changes Included\n' +
+              '<!-- List the key changes or tickets included in this release -->\n\n' +
+              '### Deployment Notes\n' +
+              '<!-- Add any special deployment instructions or considerations -->\n';
 
     searchPrefixes = ['feature/' + version];
   }
