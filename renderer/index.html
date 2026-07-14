@@ -325,6 +325,7 @@
     <div class="tab" data-tab="log-time">Log Time</div>
     <div class="tab" data-tab="create-pr">Create PR</div>
     <div class="tab" data-tab="review-pr">Review PR</div>
+    <div class="tab" data-tab="evaluate-comments">Evaluate Comments</div>
     <div class="tab" data-tab="create-ticket">Create Jira Ticket</div>
     <div class="tab" data-tab="teams-message">Teams Message</div>
     <div class="tab" data-tab="settings">⚙ Settings</div>
@@ -472,6 +473,32 @@
         <button class="btn btn-secondary" id="rpr-approve" style="display:none;">
           <span class="btn-text">✓ Approve PR</span>
         </button>
+      </div>
+    </div>
+
+    <!-- ── Evaluate Comments ── -->
+    <div class="tab-panel" id="panel-evaluate-comments">
+      <div class="card">
+        <div class="card-title">🤖 Evaluate Copilot PR Comments</div>
+        <div class="card-desc">
+          Analyzes GitHub Copilot code review comments on a PR. Uses AI to evaluate each suggestion,
+          determine priority (High/Medium/Low), and recommend whether to apply it.
+          Generates downloadable reports with categorized findings.
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Jira Ticket or PR URL</label>
+        <input type="text" id="ec-input" placeholder="AINEX-27 or https://github.com/org/repo/pull/123" maxlength="200" autocomplete="off" spellcheck="false">
+        <div class="hint">Ticket → auto-detects repo &nbsp;|&nbsp; URL → any repo in your org</div>
+      </div>
+      <button class="btn" id="ec-evaluate">
+        <span class="btn-text">Evaluate Comments</span>
+      </button>
+      <div class="hint" style="margin-top: 12px; font-size: 12px; line-height: 1.6;">
+        ⓘ Requires AI provider configuration in Settings (OpenAI or GitHub Models).<br>
+        Reports are optimized for <strong>GitHub Copilot</strong> with:<br>
+        • ✅ Actionable checklists &nbsp;• 🔗 Direct VS Code links &nbsp;• 🤖 Copilot command templates<br>
+        📁 Saved to <code>Documents\Copilot Review\</code> (auto-cleanup: keeps last 20 files, max 30 days)
       </div>
     </div>
 

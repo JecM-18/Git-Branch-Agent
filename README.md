@@ -7,6 +7,9 @@ A VS Code Copilot agent that creates GitHub branches from Jira tickets and logs 
 - **Create a standard branch** from a Jira ticket (always branched from `develop`)
 - **Create a mid branch** for staging, UAT, or production environments
 - **Log work time** on a Jira ticket for one or multiple dates
+- **Create pull requests** with AI-generated summaries
+- **Review PRs** with AI-powered code analysis
+- **Evaluate Copilot PR comments** — AI evaluates GitHub Copilot suggestions to determine priority and applicability
 
 ## Supported Projects
 
@@ -103,6 +106,115 @@ Mid branches are created from the environment branch with the feature branch mer
 | `staging` | `Release/Staging` | `deployment/staging` |
 | `uat` | `Release/UAT` | `deployment/UAT` |
 | `prod` / `production` | `Release/Production` | `deployment/Production` |
+
+## Evaluate Copilot PR Comments
+
+The **Evaluate Comments** feature analyzes GitHub Copilot code review comments using AI to help you prioritize and decide which suggestions to apply.
+
+### What It Does
+
+- Fetches all Copilot comments from a PR (inline and review comments)
+- Uses AI to evaluate each comment for:
+  - **Should Apply**: Yes/No recommendation
+  - **Priority**: High/Medium/Low
+  - **Category**: Security/Bugs/Performance/Quality/Style
+  - **Reasoning**: Brief explanation of the evaluation
+- Generates multiple output formats:
+  - Console output with color-coded priorities
+  - Markdown report (`.md`) with tables and detailed breakdown
+  - Text file (`.txt`) for easy download and sharing
+
+### How to Use
+
+**Via Desktop App:**
+1. Go to the "Evaluate Comments" tab
+2. Enter a Jira ticket (e.g., `AINEX-27`) or PR URL
+3. Click "Evaluate Comments"
+4. Wait for AI evaluation (may take 10-30 seconds per comment)
+5. View results in the output panel
+6. Find generated reports in: `Documents/Copilot Review/pr-{number}-evaluation-{timestamp}.md` and `.txt`
+7. Old reports are automatically cleaned up (keeps last 20 files, max 30 days)
+
+**Via Terminal:**
+```bash
+node scripts/evaluate-pr-comments.js AINEX-27
+# or
+node scripts/evaluate-pr-comments.js https://github.com/org/repo/pull/123
+```
+
+Reports are saved to `Documents/Copilot Review/` with automatic cleanup.
+
+### Requirements
+
+- AI provider configuration in `.env` (see Settings tab):
+  - Option 1: `OPENAI_API_KEY` (recommended)
+  - Option 2: `AI_PROVIDER=github` with `GITHUB_TOKEN`
+- PR must have Copilot review comments
+
+### Output Example
+
+```
+🔴 HIGH PRIORITY (2)
+  ✅ APPLY [Security] src/auth.js:45
+    💬 Potential SQL injection vulnerability...
+    📝 Critical security issue that must be addressed
+    🔧 Ask Copilot: "@workspace /fix src/auth.js:45"
+
+🟡 MEDIUM PRIORITY (5)
+  ✅ APPLY [Bugs] src/utils.js:120
+    💬 Possible null pointer exception...
+    📝 Should be fixed to prevent runtime errors
+
+🟢 LOW PRIORITY (3)
+  ⏭️  SKIP [Style] src/components/Button.js:10
+    💬 Consider using const instead of let...
+    📝 Minor style improvement, not critical
+```
+
+### Generated Reports
+
+The evaluation creates two Copilot-optimized report files:
+
+**Markdown Report (`.md`):**
+- ✅ Quick action checklist with checkboxes
+- 🔗 Direct VS Code file links (`vscode://file/...`)
+- 🤖 Instructions for GitHub Copilot to generate fixes
+- 📊 Priority-based sections with detailed breakdown
+- 💡 Suggested Copilot commands for each issue
+
+**Text Report (`.txt`):**
+- 📋 Plain text format for easy sharing
+- ✅ Actionable checklist format `[ ]` → `[X]`
+- 🎯 Clear file locations and line references
+- 📝 Step-by-step instructions for applying fixes
+- 🔧 Copilot command templates ready to use
+
+### Using Reports with GitHub Copilot
+
+**In VS Code, open the generated `.md` file and:**
+
+1. **Ask Copilot to apply all high-priority fixes:**
+   ```
+   @workspace /fix Apply all high-priority changes from this evaluation
+   ```
+
+2. **Ask for a specific fix:**
+   ```
+   @workspace /fix src/auth.js:45 implement the suggested null check
+   ```
+
+3. **Review a specific issue:**
+   ```
+   @workspace Review the security issue at src/auth.js:45 and suggest a fix
+   ```
+
+4. **Check off items** in the Quick Action Checklist as you apply them
+
+The reports are formatted specifically for Copilot to understand:
+- Clear file paths and line numbers
+- Actionable descriptions
+- Priority-based organization
+- Embedded instructions and prompts
 
 ## Supported Time Formats
 

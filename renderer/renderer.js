@@ -101,6 +101,21 @@ toUpper('mid-ticket');
 toUpper('lt-ticket');
 toUpper('tm-ticket');
 
+// Smart casing for ec-input: uppercase if ticket pattern, otherwise leave as-is
+(function () {
+  const el = document.getElementById('ec-input');
+  el.addEventListener('input', () => {
+    const val = el.value;
+    const trimmed = val.trim();
+    // Check if it looks like a ticket (starts with uppercase letters followed by dash and numbers)
+    if (/^[A-Z]+-\d*$/.test(trimmed.toUpperCase())) {
+      const pos = el.selectionStart;
+      el.value = val.toUpperCase();
+      el.setSelectionRange(pos, pos);
+    }
+  });
+}());
+
 // Smart casing for rpr-input: uppercase if ticket pattern, otherwise leave as-is
 (function () {
   const el = document.getElementById('rpr-input');
@@ -364,6 +379,22 @@ async function submit_approvePR() {
     rprApproveBtn.disabled = false;
     span.textContent = orig;
   }
+}
+
+// ─── Evaluate Comments ────────────────────────────────────────────────────────
+const ecBtn = document.getElementById('ec-evaluate');
+
+ecBtn.addEventListener('click', () => submit_evaluateComments());
+
+document.getElementById('ec-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') submit_evaluateComments();
+});
+
+function submit_evaluateComments() {
+  const input = document.getElementById('ec-input').value.trim();
+  if (!input) return showError('Enter a Jira ticket (e.g. AINEX-27) or GitHub PR URL');
+  
+  runOperation(ecBtn, () => window.electronAPI.evaluateComments(input));
 }
 
 // ─── Create Jira Ticket ───────────────────────────────────────────────────────

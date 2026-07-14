@@ -79,6 +79,7 @@ function createWindow() {
 
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   win.setMenuBarVisibility(false);
+  win.maximize();
 }
 
 app.whenReady().then(() => {
@@ -176,6 +177,10 @@ ipcMain.handle('run-review-pr', (event, input, approve) => {
   if (approve) args.push('--approve');
   return runScript(event, 'review-pr.js', args);
 });
+
+ipcMain.handle('run-evaluate-comments', (event, input) =>
+  runScript(event, 'evaluate-pr-comments.js', [input])
+);
 
 ipcMain.handle('run-format-teams-message', (event, ticket) =>
   runScript(event, 'format-teams-message.js', [ticket])

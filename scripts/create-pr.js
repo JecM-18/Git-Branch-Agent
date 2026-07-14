@@ -43,6 +43,64 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// ─── AI Summary ───────────────────────────────────────────────────────────────
+async function generateAISummary(diff) {
+  const { AI_PROVIDER, GITHUB_TOKEN, AI_MODEL } = process.env;
+  
+  if (!AI_PROVIDER || !GITHUB_TOKEN) {
+    return '<!-- AI summary unavailable: Missing AI configuration -->';
+  }
+
+  const prompt = `Summarize these code changes in 1-2 sentences. Be extremely concise. Focus only on what changed:\n\n${diff.slice(0, 8000)}`;
+
+  try {
+    const response = await axios.post(
+      'https://models.inference.ai.azure.com/chat/completions',
+      {
+        messages: [
+          { role: 'system', content: 'You are a technical writer. Summarize code changes in 1-2 sentences maximum.' },
+          { role: 'user', content: prompt }
+        ],
+        model: AI_MODEL || 'gpt-4o',
+        temperature: 0.3,
+        max_tokens: 150
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + GITHUB_TOKEN
+        }
+      }
+    );
+
+    return response.data.choices[0].message.content.trim();
+  } catch (err) {
+    console.warn('  Warning: AI summary failed:', err.message);
+    return '<!-- AI summary unavailable -->';
+  }
+}
+
+async function getCommitDiff(repo, base, head) {
+  const org = process.env.GITHUB_ORG;
+  try {
+    const { data } = await axios.get(
+      `https://api.github.com/repos/${org}/${repo}/compare/${base}...${head}`,
+      { headers: ghHeaders() }
+    );
+    
+    // Collect file changes into a readable format
+    const changes = data.files.map(f => {
+      const status = f.status === 'added' ? '+' : f.status === 'removed' ? '-' : '~';
+      return `${status} ${f.filename} (+${f.additions}/-${f.deletions})`;
+    }).join('\n');
+    
+    return changes || 'No changes detected';
+  } catch (err) {
+    console.warn('  Warning: Could not fetch diff:', err.message);
+    return 'Unable to fetch changes';
+  }
+}
+
 // ─── Jira ─────────────────────────────────────────────────────────────────────
 async function fetchJiraIssue(ticket) {
   const { JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN } = process.env;
@@ -184,7 +242,7 @@ async function run(input, envArg, reviewersArg, useMid = true) {
   const ticketRegex = /^([A-Z]+)-(\d+)$/;
   const isTicket = ticketRegex.test(input.trim().toUpperCase());
 
-  let projectKey, repo, baseBranch, prTitle, prBody, searchPrefixes;
+  let projectKey, repo, baseBranch, prTitle, prBody, searchPrefixes, issueData;
 
   if (isTicket) {
     // ── Ticket mode ────────────────────────────────────────────────────────
@@ -201,21 +259,13 @@ async function run(input, envArg, reviewersArg, useMid = true) {
     baseBranch = envMap.staging;
 
     console.log('Fetching Jira issue ' + ticket + '...');
-    const issue = await fetchJiraIssue(ticket);
-    console.log('  Summary : ' + issue.summary);
-    console.log('  Type    : ' + issue.issueType);
+    issueData = await fetchJiraIssue(ticket);
+    console.log('  Summary : ' + issueData.summary);
+    console.log('  Type    : ' + issueData.issueType);
 
-    prTitle = ticket + ' - ' + issue.summary;
-    prBody  = '## ' + ticket + '\n\n' +
-              '**Type:** ' + issue.issueType + '\n' +
-              '**Summary:** ' + issue.summary + '\n\n' +
-              '### Jira Link\n' +
-              process.env.JIRA_BASE_URL + '/browse/' + ticket + '\n\n' +
-              '### Description\n' +
-              '<!-- Add a brief description of the changes made -->\n\n' +
-              '### Testing\n' +
-              '<!-- Describe how this was tested -->\n';
-
+    prTitle = ticket + ' - ' + issueData.summary;
+    
+    // We'll add the AI summary after finding the branch
     searchPrefixes = ['feature/' + ticket, 'bug/' + ticket];
 
   } else {
@@ -247,17 +297,8 @@ async function run(input, envArg, reviewersArg, useMid = true) {
     }
 
     prTitle = 'Release ' + version;
-    prBody  = '## Release ' + version + '\n\n' +
-              '**Project:** ' + projectKey + '\n' +
-              '**Environment:** ' + env.toUpperCase() + '\n' +
-              '**Target Branch:** ' + baseBranch + '\n\n' +
-              '### Release Notes\n' +
-              '<!-- Add release notes here -->\n\n' +
-              '### Changes Included\n' +
-              '<!-- List the key changes or tickets included in this release -->\n\n' +
-              '### Deployment Notes\n' +
-              '<!-- Add any special deployment instructions or considerations -->\n';
-
+    
+    // We'll add the AI summary after finding the branch
     searchPrefixes = ['feature/' + version];
   }
 
@@ -285,6 +326,34 @@ async function run(input, envArg, reviewersArg, useMid = true) {
   console.log('  Base    : ' + baseBranch);
   console.log('  Title   : ' + prTitle);
   console.log('  Repo    : ' + org + '/' + repo);
+
+  // ── Generate AI Summary ───────────────────────────────────────────────────
+  console.log('\nGenerating AI summary of changes...');
+  const diff = await getCommitDiff(repo, baseBranch, headBranch);
+  const aiSummary = await generateAISummary(diff);
+  console.log('  ✓ Summary generated');
+
+  // ── Build PR Body ─────────────────────────────────────────────────────────
+  if (isTicket) {
+    const ticket = input.trim().toUpperCase();
+    prBody = '## ' + ticket + '\n\n' +
+             '**Type:** ' + issueData.issueType + '\n' +
+             '**Summary:** ' + issueData.summary + '\n\n' +
+             '### Jira Link\n' +
+             process.env.JIRA_BASE_URL + '/browse/' + ticket + '\n\n' +
+             '### Changes\n' +
+             aiSummary + '\n';
+  } else {
+    const parts = input.trim().split(/\s+/);
+    const version = parts.slice(1).join(' ');
+    const env = (envArg || '').toLowerCase();
+    prBody = '## Release ' + version + '\n\n' +
+             '**Project:** ' + projectKey + '\n' +
+             '**Environment:** ' + env.toUpperCase() + '\n' +
+             '**Target Branch:** ' + baseBranch + '\n\n' +
+             '### Changes\n' +
+             aiSummary + '\n';
+  }
 
   // ── Create PR ─────────────────────────────────────────────────────────────
   console.log('\nCreating pull request...');
