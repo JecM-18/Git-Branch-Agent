@@ -1,0 +1,37 @@
+@@ -57,6 +57,7 @@
+   min-height: 600px;
+   border: 1px solid #e5e7eb;
+   position: relative;
++  flex-shrink: 0;
+ }
+ 
+ /* A4 page boundary guide lines (visual only) */
+@@ -128,6 +129,28 @@
+   margin-bottom: 12px !important;
+ }
+ 
++/* Spacer div inserted before table chunks that cross a page boundary */
++.page-break-spacer {
++  display: block;
++  width: 100%;
++  pointer-events: none;
++}
++
++/* Continuation table chunk after a page-break split */
++.continuation-table {
++  margin-top: 0 !important;
++}
++
++/* Invisible spacer row injected by adjustForPageBreaks() */
++::ng-deep .pb-spacer-row td {
++  background: none !important;
++}
++
++/* Cloned header row repeated after a page-break spacer */
++::ng-deep tr.pb-spacer-row th {
++  background: inherit;
++}
++
+ .no-rows-cell {
+   text-align: center;
+   color: #9ca3af;

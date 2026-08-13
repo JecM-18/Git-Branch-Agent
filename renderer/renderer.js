@@ -217,6 +217,50 @@ function submit_logTime() {
 // ─── Create PR ───────────────────────────────────────────────────────────────
 const prBtn = document.getElementById('pr-submit');
 
+// ─── Reviewer tags ───────────────────────────────────────────────────────────
+const DEFAULT_REVIEWERS = ['cs-markdi', 'cs-fredv', 'marcn-04'];
+const reviewerTagsEl = document.getElementById('pr-reviewers-tags');
+const reviewerInput  = document.getElementById('pr-reviewers-input');
+
+function addReviewerTag(username) {
+  username = username.trim();
+  if (!username) return;
+  // Prevent duplicates
+  const existing = [...reviewerTagsEl.querySelectorAll('.rv-tag')].map(t => t.dataset.user);
+  if (existing.includes(username)) return;
+
+  const tag = document.createElement('span');
+  tag.className = 'rv-tag';
+  tag.dataset.user = username;
+  tag.style.cssText = [
+    'display:inline-flex', 'align-items:center', 'gap:4px',
+    'background:var(--accent)', 'color:#fff', 'border-radius:4px',
+    'padding:2px 8px', 'font-size:12px', 'user-select:none'
+  ].join(';');
+  tag.innerHTML = username + ' <span style="cursor:pointer;font-size:14px;line-height:1" title="Remove">×</span>';
+  tag.querySelector('span').addEventListener('click', () => tag.remove());
+  reviewerTagsEl.appendChild(tag);
+}
+
+function getReviewers() {
+  return [...reviewerTagsEl.querySelectorAll('.rv-tag')].map(t => t.dataset.user);
+}
+
+// Pre-populate defaults
+DEFAULT_REVIEWERS.forEach(addReviewerTag);
+
+// Add reviewer on Enter or comma
+reviewerInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ',') {
+    e.preventDefault();
+    addReviewerTag(reviewerInput.value.replace(/,/g, ''));
+    reviewerInput.value = '';
+  }
+});
+
+// Click the tag container to focus the input
+reviewerTagsEl.addEventListener('click', () => reviewerInput.focus());
+
 prBtn.addEventListener('click', () => submit_createPR());
 
 document.getElementById('pr-input').addEventListener('keydown', (e) => {
@@ -239,10 +283,10 @@ function submit_createPR() {
     if (!env) return showError('Select an environment (UAT or Production) for release PRs.');
   }
 
-  const reviewers = document.getElementById('pr-reviewers').value.trim();
+  const reviewers = getReviewers().join(',');
   const useMid = document.getElementById('pr-use-mid').checked;
 
-  runOperation(prBtn, () => window.electronAPI.createPR(input, env, reviewers || '', useMid));
+  runOperation(prBtn, () => window.electronAPI.createPR(input, env, reviewers, useMid));
 }
 
 // ─── Review PR ────────────────────────────────────────────────────────────────
@@ -397,6 +441,35 @@ function submit_evaluateComments() {
   runOperation(ecBtn, () => window.electronAPI.evaluateComments(input));
 }
 
+// ─── Release Branch ───────────────────────────────────────────────────────────
+const rbBtn = document.getElementById('rb-create');
+
+rbBtn.addEventListener('click', () => submit_releaseBranch());
+
+['rb-version'].forEach((id) => {
+  document.getElementById(id).addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') submit_releaseBranch();
+  });
+});
+
+function submit_releaseBranch() {
+  const project = document.getElementById('rb-project').value.trim();
+  const version = document.getElementById('rb-version').value.trim();
+  const env = document.getElementById('rb-env').value.trim();
+
+  if (!project) return showError('Select a project');
+  if (!version) return showError('Enter a release version (e.g., 3.51.0)');
+  
+  // Validate version format
+  if (!/^\d+\.\d+\.\d+$/.test(version)) {
+    return showError('Invalid version format. Expected: X.Y.Z (e.g., 3.51.0)');
+  }
+
+  const createPR = !!env;
+  
+  runOperation(rbBtn, () => window.electronAPI.createReleaseBranch(project, version, env, createPR));
+}
+
 // ─── Create Jira Ticket ───────────────────────────────────────────────────────
 const ctBtn = document.getElementById('ct-create');
 
@@ -421,6 +494,84 @@ function submit_createTicket() {
   if (!costCenter) return showError('Please select a cost center');
 
   runOperation(ctBtn, () => window.electronAPI.createJiraTicket(project, type, title, description || '', costCenter, assignToMe));
+}
+
+// ─── Change Jira Status ───────────────────────────────────────────────────────
+const csLoadBtn = document.getElementById('cs-load-tickets');
+const csTicketSelect = document.getElementById('cs-ticket');
+const csTransitionSelect = document.getElementById('cs-transition');
+const csSubmitBtn = document.getElementById('cs-submit');
+
+csLoadBtn.addEventListener('click', loadJiraTickets);
+csTicketSelect.addEventListener('change', loadTransitions);
+csTransitionSelect.addEventListener('change', () => {
+  csSubmitBtn.disabled = !csTransitionSelect.value;
+});
+csSubmitBtn.addEventListener('click', submit_changeStatus);
+
+async function loadJiraTickets() {
+  const span = csLoadBtn.querySelector('.btn-text');
+  const orig = span.textContent;
+  csLoadBtn.disabled = true;
+  span.innerHTML = '<span class="spinner"></span> Loading…';
+
+  try {
+    const tickets = await window.electronAPI.listJiraTickets();
+    csTicketSelect.innerHTML = '<option value="">-- Select a ticket --</option>';
+    tickets.forEach((t) => {
+      const opt = document.createElement('option');
+      opt.value = t.key;
+      opt.textContent = `${t.key} — ${t.summary} [${t.status}]`;
+      csTicketSelect.appendChild(opt);
+    });
+    csTicketSelect.disabled = false;
+    csTransitionSelect.innerHTML = '<option value="">-- Select a ticket first --</option>';
+    csTransitionSelect.disabled = true;
+    csSubmitBtn.disabled = true;
+  } catch (err) {
+    showError('Failed to load tickets: ' + err.message);
+  } finally {
+    csLoadBtn.disabled = false;
+    span.textContent = orig;
+  }
+}
+
+async function loadTransitions() {
+  const ticketKey = csTicketSelect.value;
+  csTransitionSelect.innerHTML = '<option value="">Loading…</option>';
+  csTransitionSelect.disabled = true;
+  csSubmitBtn.disabled = true;
+
+  if (!ticketKey) {
+    csTransitionSelect.innerHTML = '<option value="">-- Select a ticket first --</option>';
+    return;
+  }
+
+  try {
+    const transitions = await window.electronAPI.listJiraTransitions(ticketKey);
+    csTransitionSelect.innerHTML = '<option value="">-- Select transition --</option>';
+    transitions.forEach((t) => {
+      const opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = t.name;
+      csTransitionSelect.appendChild(opt);
+    });
+    csTransitionSelect.disabled = false;
+    csSubmitBtn.disabled = true;
+  } catch (err) {
+    csTransitionSelect.innerHTML = '<option value="">-- Error loading transitions --</option>';
+    showError('Failed to load transitions: ' + err.message);
+  }
+}
+
+function submit_changeStatus() {
+  const ticketKey = csTicketSelect.value;
+  const transitionId = csTransitionSelect.value;
+
+  if (!ticketKey) return showError('Select a ticket');
+  if (!transitionId) return showError('Select a transition');
+
+  runOperation(csSubmitBtn, () => window.electronAPI.changeJiraStatus(ticketKey, transitionId));
 }
 
 // ─── Teams Message ────────────────────────────────────────────────────────────
@@ -515,6 +666,7 @@ async function loadSettings() {
   if (s.JIRA_API_TOKEN)  document.getElementById('s-jira-token').value  = s.JIRA_API_TOKEN;
   if (s.GITHUB_PAT)      document.getElementById('s-github-pat').value  = s.GITHUB_PAT;
   if (s.GITHUB_ORG)      document.getElementById('s-github-org').value  = s.GITHUB_ORG;
+  if (s.GITHUB_USERNAME) document.getElementById('s-github-username').value = s.GITHUB_USERNAME;
   if (s.OPENAI_API_KEY)  document.getElementById('s-openai-key').value  = s.OPENAI_API_KEY;
   if (s.AI_MODEL)        document.getElementById('s-ai-model').value    = s.AI_MODEL;
   if (s.AI_PROVIDER)     document.getElementById('s-ai-provider').value = s.AI_PROVIDER || 'openai';
@@ -542,6 +694,7 @@ document.getElementById('s-save').addEventListener('click', async () => {
     JIRA_API_TOKEN:  document.getElementById('s-jira-token').value.trim(),
     GITHUB_PAT:      document.getElementById('s-github-pat').value.trim(),
     GITHUB_ORG:      document.getElementById('s-github-org').value.trim(),
+    GITHUB_USERNAME: document.getElementById('s-github-username').value.trim(),
     OPENAI_API_KEY:  document.getElementById('s-openai-key').value.trim(),
     AI_MODEL:        document.getElementById('s-ai-model').value.trim(),
     AI_PROVIDER:     document.getElementById('s-ai-provider').value.trim(),
@@ -573,7 +726,138 @@ function showError(msg) {
   // Scroll log into view
   document.querySelector('.output-section').scrollIntoView({ behavior: 'smooth' });
 }
+// ─── Auto Review Tab ──────────────────────────────────────────────────────
+const arToggle   = document.getElementById('ar-toggle');
+const arBadge    = document.getElementById('ar-status-badge');
+const arRunNow   = document.getElementById('ar-run-now');
+const arQueueBody = document.getElementById('ar-queue-body');
+const arLog      = document.getElementById('ar-log');
 
+function arLogLine(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  arLog.appendChild(div);
+  arLog.scrollTop = arLog.scrollHeight;
+}
+
+const DECISION_STYLE = {
+  APPROVE:          'color:#4ade80; font-weight:700;',
+  REQUEST_CHANGES:  'color:#f87171; font-weight:700;',
+  NEEDS_HUMAN:      'color:#f59e0b; font-weight:700;',
+};
+
+const RISK_STYLE = {
+  LOW_RISK: 'color:#4ade80;',
+  COMPLEX:  'color:#f59e0b;',
+};
+
+function appendQueueRow(result) {
+  // Remove placeholder row if present
+  const placeholder = arQueueBody.querySelector('tr td[colspan]');
+  if (placeholder) placeholder.closest('tr').remove();
+
+  const tr = document.createElement('tr');
+  tr.style.cssText = 'border-bottom:1px solid var(--border); cursor:pointer;';
+  tr.title = result.summary || '';
+
+  const time = result.reviewedAt
+    ? new Date(result.reviewedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : '';
+
+  tr.innerHTML = '<td style="padding:7px 8px; max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' +
+    '<a style="color:var(--info); text-decoration:none; cursor:pointer;" data-url="' + (result.url || '') + '">' +
+    escapeHtml(result.title || '') + '</a></td>' +
+    '<td style="padding:7px 8px; color:var(--text-muted);">' + escapeHtml(result.repo || '') + '</td>' +
+    '<td style="padding:7px 8px; ' + (DECISION_STYLE[result.decision] || '') + '">' + (result.decision || '') + '</td>' +
+    '<td style="padding:7px 8px; ' + (RISK_STYLE[result.risk] || '') + '">' + (result.risk || '') + '</td>' +
+    '<td style="padding:7px 8px; color:var(--text-muted);">' + time + '</td>';
+
+  tr.querySelector('a').addEventListener('click', (e) => {
+    const url = e.target.dataset.url;
+    if (url) window.electronAPI.openExternal(url);
+  });
+
+  // Insert newest at top
+  arQueueBody.insertBefore(tr, arQueueBody.firstChild);
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+async function initAutoReviewTab() {
+  try {
+    const status = await window.electronAPI.getAutoReviewStatus();
+    arToggle.checked = status.enabled;
+    arBadge.textContent = status.enabled ? (status.running ? '🟡 Running' : '🟢 Active') : '⚫ Idle';
+    arBadge.style.color = status.enabled ? (status.running ? 'var(--warning)' : 'var(--success)') : 'var(--text-muted)';
+    arBadge.style.borderColor = status.enabled ? (status.running ? 'var(--warning)' : 'var(--success)') : 'var(--border)';
+
+    if (status.queue && status.queue.length > 0) {
+      // Repopulate queue from memory (newest first already)
+      arQueueBody.innerHTML = '';
+      status.queue.forEach(appendQueueRow);
+    }
+  } catch { /* ignore */ }
+}
+
+// Populate queue when switching to Auto Review tab
+document.querySelector('.tab[data-tab="auto-review"]').addEventListener('click', initAutoReviewTab);
+
+arToggle.addEventListener('change', async () => {
+  const enabled = arToggle.checked;
+  try {
+    await window.electronAPI.toggleAutoReview(enabled);
+    arBadge.textContent = enabled ? '🟢 Active' : '⚫ Idle';
+    arBadge.style.color = enabled ? 'var(--success)' : 'var(--text-muted)';
+    arBadge.style.borderColor = enabled ? 'var(--success)' : 'var(--border)';
+    arLogLine(enabled ? '▶ Agent enabled — polling every 2 minutes.' : '⏹ Agent disabled.');
+  } catch (err) {
+    arLogLine('✗ ' + err.message);
+    arToggle.checked = !enabled;
+  }
+});
+
+arRunNow.addEventListener('click', async () => {
+  const span = arRunNow.querySelector('.btn-text');
+  arRunNow.disabled = true;
+  span.innerHTML = '<span class="spinner"></span> Running…';
+  arLogLine('▶ Manual review started…');
+  arBadge.textContent = '🟡 Running';
+  arBadge.style.color = 'var(--warning)';
+  arBadge.style.borderColor = 'var(--warning)';
+  try {
+    await window.electronAPI.runAutoReviewNow();
+  } finally {
+    arRunNow.disabled = false;
+    span.textContent = '▶ Review Now';
+  }
+});
+
+window.electronAPI.onAutoReviewResult((result) => {
+  appendQueueRow({ ...result, reviewedAt: new Date().toISOString() });
+  const label = result.decision === 'APPROVE' ? '✅ Auto-approved' :
+                result.decision === 'REQUEST_CHANGES' ? '❌ Issues found' : '⚠️ Needs human review';
+  arLogLine(label + ': ' + result.title + ' [' + result.repo + ']');
+  arBadge.textContent = '🟢 Active';
+  arBadge.style.color = 'var(--success)';
+  arBadge.style.borderColor = 'var(--success)';
+});
+
+window.electronAPI.onAutoReviewLog((text) => {
+  arLogLine(text);
+});
+
+window.electronAPI.onShowAutoReviewTab(() => {
+  document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
+  const tab = document.querySelector('.tab[data-tab="auto-review"]');
+  if (tab) {
+    tab.classList.add('active');
+    document.getElementById('panel-auto-review').classList.add('active');
+    initAutoReviewTab();
+  }
+});
 // ─── Time Reminder Handler ────────────────────────────────────────────────────
 window.electronAPI.onShowLogTimeTab(() => {
   // Switch to the log time tab

@@ -326,8 +326,11 @@
     <div class="tab" data-tab="create-pr">Create PR</div>
     <div class="tab" data-tab="review-pr">Review PR</div>
     <div class="tab" data-tab="evaluate-comments">Evaluate Comments</div>
+    <div class="tab" data-tab="release-branch">Release Branch</div>
     <div class="tab" data-tab="create-ticket">Create Jira Ticket</div>
+    <div class="tab" data-tab="change-status">Change Status</div>
     <div class="tab" data-tab="teams-message">Teams Message</div>
+    <div class="tab" data-tab="auto-review">🤖 Auto Review</div>
     <div class="tab" data-tab="settings">⚙ Settings</div>
   </div>
 
@@ -435,9 +438,16 @@
         </div>
       </div>
       <div class="form-group">
-        <label>Reviewers <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-muted)">(optional)</span></label>
-        <input type="text" id="pr-reviewers" placeholder="github-username, another-user" autocomplete="off" spellcheck="false">
-        <div class="hint">GitHub usernames, comma-separated</div>
+        <label>Reviewers <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-muted)">(click × to remove)</span></label>
+        <div id="pr-reviewers-tags" style="
+          display:flex; flex-wrap:wrap; gap:6px; align-items:center;
+          background:var(--surface3); border:1px solid var(--border);
+          border-radius:6px; padding:6px 8px; min-height:38px; cursor:text;
+        ">
+        </div>
+        <input type="text" id="pr-reviewers-input" placeholder="Add reviewer…" autocomplete="off" spellcheck="false"
+          style="margin-top:6px;">
+        <div class="hint">Press Enter or comma to add · Click × on a tag to remove</div>
       </div>
       <div class="form-group">
         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 13px; color: var(--text);">
@@ -502,6 +512,53 @@
       </div>
     </div>
 
+    <!-- ── Release Branch ── -->
+    <div class="tab-panel" id="panel-release-branch">
+      <div class="card">
+        <div class="card-title">🚀 Create Release Branch</div>
+        <div class="card-desc">
+          Creates a release branch from develop, automatically merges all open PRs, 
+          detects conflicts, and optionally creates a PR to UAT or Production.
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Project</label>
+        <div class="select-wrapper">
+          <select id="rb-project">
+            <option value="Nexus">Nexus (AINEX)</option>
+            <option value="Pact-X">Pact-X (AIPACT)</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Release Version</label>
+        <input type="text" id="rb-version" placeholder="e.g. 3.51.0" maxlength="20" autocomplete="off" spellcheck="false">
+        <div class="hint">Format: X.Y.Z (e.g., 3.51.0)</div>
+      </div>
+      <div class="form-group">
+        <label>Target Environment <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-muted)">(for PR creation)</span></label>
+        <div class="select-wrapper">
+          <select id="rb-env">
+            <option value="">-- Skip PR Creation --</option>
+            <option value="uat">UAT</option>
+            <option value="prod">Production</option>
+          </select>
+        </div>
+        <div class="hint">Leave blank to only create the branch and merge tickets</div>
+      </div>
+      <button class="btn" id="rb-create">
+        <span class="btn-text">Create Release Branch</span>
+      </button>
+      <div class="hint" style="margin-top: 12px; font-size: 12px; line-height: 1.6;">
+        ℹ This will:<br>
+        1. Create <code>feature/{version}</code> branch from develop<br>
+        2. List all open PRs targeting develop<br>
+        3. Merge each ticket into the release branch<br>
+        4. Detect and report any merge conflicts<br>
+        5. Optionally create a PR to UAT/Prod (if env selected)
+      </div>
+    </div>
+
     <!-- ── Create Jira Ticket ── -->
     <div class="tab-panel" id="panel-create-ticket">
       <div class="card">
@@ -562,6 +619,42 @@
       </button>
     </div>
 
+    <!-- ── Change Jira Status ── -->
+    <div class="tab-panel" id="panel-change-status">
+      <div class="card">
+        <div class="card-title">Change Jira Ticket Status</div>
+        <div class="card-desc">
+          Select one of your assigned tickets and transition it to a new status.
+          Available transitions are fetched dynamically from Jira.
+        </div>
+      </div>
+      <div class="form-group">
+        <button class="btn btn-secondary" id="cs-load-tickets">
+          <span class="btn-text">Load My Tickets</span>
+        </button>
+        <div class="hint">Fetches your assigned tickets (excludes Done)</div>
+      </div>
+      <div class="form-group">
+        <label>Ticket</label>
+        <div class="select-wrapper">
+          <select id="cs-ticket" disabled>
+            <option value="">-- Load tickets first --</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Transition To</label>
+        <div class="select-wrapper">
+          <select id="cs-transition" disabled>
+            <option value="">-- Select a ticket first --</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn" id="cs-submit" disabled>
+        <span class="btn-text">Change Status</span>
+      </button>
+    </div>
+
     <!-- ── Teams Message ── -->
     <div class="tab-panel" id="panel-teams-message">
       <div class="card">
@@ -586,6 +679,61 @@
           <span class="btn-text">📋 Copy to Clipboard</span>
         </button>
         <div class="hint" id="tm-copy-status" style="color: var(--success); font-weight: 600; display: none; margin-top: 4px;">✓ Copied!</div>
+      </div>
+    </div>
+
+    <!-- ── Auto Review ── -->
+    <div class="tab-panel" id="panel-auto-review">
+      <div class="card">
+        <div class="card-title">🤖 Auto PR Review Agent</div>
+        <div class="card-desc">
+          Polls GitHub every <strong>2 minutes</strong> for PRs assigned to you as reviewer.
+          Runs a deep AI code review and auto-approves <strong>LOW_RISK</strong> PRs with no issues.
+          Complex or risky PRs trigger a notification for your manual review.
+        </div>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+        <label style="display:flex; align-items:center; gap:10px; cursor:pointer; text-transform:none; letter-spacing:0; font-weight:400; font-size:14px; color:var(--text);">
+          <input type="checkbox" id="ar-toggle" style="width:auto; cursor:pointer; accent-color:var(--accent);">
+          <span>Enable Background Agent</span>
+        </label>
+        <span id="ar-status-badge" style="
+          padding:3px 10px; border-radius:10px; font-size:12px; font-weight:600;
+          background:var(--surface3); border:1px solid var(--border); color:var(--text-muted);
+        ">⚫ Idle</span>
+        <button class="btn btn-secondary" id="ar-run-now" style="padding:7px 16px; font-size:12px;">
+          <span class="btn-text">▶ Review Now</span>
+        </button>
+      </div>
+
+      <div class="card" style="margin-top:4px;">
+        <div class="card-title" style="margin-bottom:8px;">Review Queue</div>
+        <div style="overflow-x:auto;">
+          <table id="ar-queue-table" style="width:100%; border-collapse:collapse; font-size:12px;">
+            <thead>
+              <tr style="color:var(--text-muted); border-bottom:1px solid var(--border);">
+                <th style="text-align:left; padding:6px 8px; font-weight:600;">PR Title</th>
+                <th style="text-align:left; padding:6px 8px; font-weight:600;">Repo</th>
+                <th style="text-align:left; padding:6px 8px; font-weight:600;">Decision</th>
+                <th style="text-align:left; padding:6px 8px; font-weight:600;">Risk</th>
+                <th style="text-align:left; padding:6px 8px; font-weight:600;">Time</th>
+              </tr>
+            </thead>
+            <tbody id="ar-queue-body">
+              <tr><td colspan="5" style="padding:12px 8px; color:var(--text-muted); text-align:center;">No reviews yet — enable the agent to start.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:4px;">
+        <div class="card-title" style="margin-bottom:6px;">Agent Log</div>
+        <div id="ar-log" style="
+          background:#070711; font-family:Consolas,monospace; font-size:12px;
+          padding:10px 14px; border-radius:6px; max-height:180px; overflow-y:auto;
+          line-height:1.8; color:#a8d8a8;
+        ">Waiting for agent to run…</div>
       </div>
     </div>
 
@@ -624,6 +772,11 @@
       <div class="form-group">
         <label>GitHub Organization</label>
         <input type="text" id="s-github-org" placeholder="your-org-name" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label>GitHub Username <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-muted)">(for Auto Review)</span></label>
+        <input type="text" id="s-github-username" placeholder="your-github-username" autocomplete="off" spellcheck="false">
+        <div class="hint">Your GitHub login — used to find PRs assigned to you as reviewer</div>
       </div>
 
       <div class="card" style="margin-top: 20px;">

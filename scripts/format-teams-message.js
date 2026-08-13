@@ -116,7 +116,7 @@ function formatTeamsMessage(ticket, prUrl, projectName) {
   const jiraUrl = process.env.JIRA_BASE_URL + '/browse/' + ticket;
   
   return (
-    '@everyone PR to ' + projectName + ' STAGING => ' + prUrl + '\n' +
+    'PR to ' + projectName + ' STAGING => ' + prUrl + '\n' +
     '- ' + jiraUrl
   );
 }

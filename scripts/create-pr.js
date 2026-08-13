@@ -4,10 +4,18 @@
 require('dotenv').config();
 const axios = require('axios');
 
+// ─── Default Reviewers ───────────────────────────────────────────────────────
+const DEFAULT_REVIEWERS = ['cs-markdi', 'cs-fredv', 'marcn-04'];
+
 // ─── Mappings ─────────────────────────────────────────────────────────────────
 const PROJECT_REPO_MAP = {
   AINEX: 'rrp',
   AIPACT: 'contractdb',
+};
+
+const PROJECT_NAME_MAP = {
+  AINEX: 'NEXUS',
+  AIPACT: 'PACT-X',
 };
 
 const ENV_BRANCH_MAP = {
@@ -234,6 +242,16 @@ function pickBranch(branches, useMid = true) {
   return null;
 }
 
+// ─── Format Teams Message ─────────────────────────────────────────────────────
+function formatTeamsMessage(ticket, prUrl, projectName, environment = 'STAGING') {
+  const jiraUrl = process.env.JIRA_BASE_URL + '/browse/' + ticket;
+  
+  return (
+    'PR to ' + projectName + ' ' + environment.toUpperCase() + ' => ' + prUrl + '\n' +
+    '- ' + jiraUrl
+  );
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 async function run(input, envArg, reviewersArg, useMid = true) {
   validateEnv();
@@ -362,12 +380,11 @@ async function run(input, envArg, reviewersArg, useMid = true) {
   console.log('  ' + pr.url);
 
   // ── Request reviewers ──────────────────────────────────────────────────
-  if (reviewersArg && reviewersArg.trim()) {
-    const logins = reviewersArg.split(',').map((r) => r.trim()).filter(Boolean);
-    console.log('\nRequesting reviewers: ' + logins.join(', ') + '...');
-    await requestReviewers(repo, pr.number, reviewersArg);
-    console.log('  ✓ Reviewers requested.');
-  }
+  const extraReviewers = reviewersArg ? reviewersArg.split(',').map((r) => r.trim()).filter(Boolean) : [];
+  const allReviewers = [...new Set([...DEFAULT_REVIEWERS, ...extraReviewers])];
+  console.log('\nRequesting reviewers: ' + allReviewers.join(', ') + '...');
+  await requestReviewers(repo, pr.number, allReviewers.join(','));
+  console.log('  ✓ Reviewers requested.');
 
   // ── Check mergeability ────────────────────────────────────────────────────
   console.log('\nChecking for merge conflicts (this may take a few seconds)...');
@@ -392,16 +409,35 @@ async function run(input, envArg, reviewersArg, useMid = true) {
   console.log('');
   console.log('PR ready!');
   console.log('  ' + pr.url);
+
+  // ── Generate Teams Message ───────────────────────────────────────────────
+  if (isTicket) {
+    const ticket = input.trim().toUpperCase();
+    const projectName = PROJECT_NAME_MAP[projectKey] || projectKey;
+    const environment = envArg ? envArg.toUpperCase() : 'STAGING';
+    const teamsMessage = formatTeamsMessage(ticket, pr.url, projectName, environment);
+
+    console.log('\n' + '─'.repeat(60));
+    console.log('📋 Teams Message Generated:');
+    console.log('─'.repeat(60));
+    console.log(teamsMessage);
+    console.log('─'.repeat(60));
+    console.log('\n✓ Copy this message and paste it into your Teams chat');
+  }
 }
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
-const args = process.argv.slice(2);
-const noMidIndex = args.indexOf('--no-mid');
-const useMid = noMidIndex === -1;
+const rawArgs = process.argv.slice(2);
+const flagArgs = new Set(rawArgs.filter((arg) => arg.startsWith('--')));
+const args = rawArgs.filter((arg) => !arg.startsWith('--'));
 
-// Remove --no-mid flag from args if present
-if (noMidIndex !== -1) {
-  args.splice(noMidIndex, 1);
+// Mid branch is enabled by default; --no-mid explicitly disables it.
+// --use-mid is accepted for explicitness and compatibility.
+const useMid = !flagArgs.has('--no-mid');
+
+const unknownFlags = [...flagArgs].filter((flag) => flag !== '--no-mid' && flag !== '--use-mid');
+if (unknownFlags.length > 0) {
+  console.warn('Warning: Ignoring unknown flags: ' + unknownFlags.join(', '));
 }
 
 const input     = args[0];
@@ -421,3 +457,4 @@ run(input, env, reviewers, useMid).catch((err) => {
   console.error('Error: ' + err.message);
   process.exit(1);
 });
+

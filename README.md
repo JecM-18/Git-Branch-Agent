@@ -10,6 +10,7 @@ A VS Code Copilot agent that creates GitHub branches from Jira tickets and logs 
 - **Create pull requests** with AI-generated summaries
 - **Review PRs** with AI-powered code analysis
 - **Evaluate Copilot PR comments** — AI evaluates GitHub Copilot suggestions to determine priority and applicability
+- **Create release branches** — Automate release workflows by creating a branch from develop, merging all open PRs, detecting conflicts, and optionally creating a PR to UAT/Prod
 
 ## Supported Projects
 
@@ -114,6 +115,7 @@ The **Evaluate Comments** feature analyzes GitHub Copilot code review comments u
 ### What It Does
 
 - Fetches all Copilot comments from a PR (inline and review comments)
+- **Automatically skips resolved conversations** to focus on open issues
 - Uses AI to evaluate each comment for:
   - **Should Apply**: Yes/No recommendation
   - **Priority**: High/Medium/Low
@@ -215,6 +217,86 @@ The reports are formatted specifically for Copilot to understand:
 - Actionable descriptions
 - Priority-based organization
 - Embedded instructions and prompts
+
+## Create Release Branch
+
+The **Release Branch** feature automates the process of preparing releases for UAT or Production. It creates a release branch from `develop`, merges all open PRs, detects conflicts, and optionally creates a PR to the target environment.
+
+### What It Does
+
+1. Creates a `feature/{version}` branch from `develop`
+2. Fetches all open PRs targeting `develop` (filters by feature/* or bug/* pattern)
+3. Merges each ticket branch into the release branch
+4. Detects and reports merge conflicts
+5. Lists successfully merged tickets
+6. Optionally creates a PR to UAT or Production
+
+### How to Use
+
+**Via Desktop App:**
+1. Go to the "Release Branch" tab
+2. Select project: **Nexus** (AINEX) or **Pact-X** (AIPACT)
+3. Enter release version (e.g., `3.51.0`)
+4. Select target environment (UAT/Prod) or leave blank to skip PR creation
+5. Click "Create Release Branch"
+6. Review the list of merged tickets and any conflicts
+7. If conflicts are detected, they will be highlighted in red
+
+**Via Terminal:**
+```bash
+# Create release branch and merge tickets (no PR)
+node scripts/create-release-branch.js Nexus 3.51.0
+
+# Create release branch, merge tickets, and create PR to UAT
+node scripts/create-release-branch.js Nexus 3.51.0 uat --create-pr
+
+# Create release branch, merge tickets, and create PR to Production
+node scripts/create-release-branch.js Pact-X 3.51.0 prod --create-pr
+```
+
+### Branch Format
+
+| Project | Release Branch | PR Target (UAT) | PR Target (Prod) |
+|---------|---------------|-----------------|------------------|
+| Nexus (AINEX) | `feature/3.51.0` | `Release/UAT` | `Release/Production` |
+| Pact-X (AIPACT) | `feature/3.51.0` | `deployment/UAT` | `deployment/Production` |
+
+### Conflict Detection
+
+If any ticket has merge conflicts when merging into the release branch:
+- The conflict will be reported with details
+- The script will continue merging other tickets
+- You must manually resolve conflicts before proceeding
+- All successfully merged tickets will be listed
+
+### Output Example
+
+```
+✅ Created release branch: feature/3.51.0 from develop
+
+📋 Found 5 open PRs targeting develop:
+
+Merging tickets...
+✅ AINEX-123: feature/AINEX-123-login-fix
+✅ AINEX-124: feature/AINEX-124-ui-update
+❌ AINEX-125: feature/AINEX-125-api-changes (CONFLICT)
+   ⚠️  Merge conflict detected. Manual resolution required.
+✅ AINEX-126: bug/AINEX-126-bug-fix
+✅ AINEX-127: feature/AINEX-127-performance
+
+📦 Successfully merged: 4/5 tickets
+⚠️  Conflicts: 1 ticket(s) require manual resolution
+
+🔗 Created PR #456: Release 3.51.0 to UAT
+   https://github.com/org/repo/pull/456
+```
+
+### Requirements
+
+- All PRs must target the `develop` branch
+- Branch names must follow pattern: `feature/*` or `bug/*`
+- PR must be in open state
+- GitHub PAT with repo access required
 
 ## Supported Time Formats
 

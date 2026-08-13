@@ -9,6 +9,7 @@ const PROJECT_REPO_MAP = {
   AINEX: 'rrp',
   AIPACT: 'contractdb',
 };
+const REPOS = Object.values(PROJECT_REPO_MAP);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function validateEnv() {
@@ -183,6 +184,33 @@ async function findPRByBranch(repo, branchPrefix) {
     if (status === 401) throw new Error('GitHub authentication failed. Check GITHUB_PAT.');
     throw new Error('GitHub API error (' + (status || 'network') + '): ' + err.message);
   }
+}
+async function fetchAssignedPRs() {
+  const org = process.env.GITHUB_ORG;
+  const username = (process.env.GITHUB_USERNAME || '').toLowerCase();
+  if (!username) {
+    throw new Error('GITHUB_USERNAME is required in .env to list assigned PRs.');
+  }
+  const results = [];
+  for (const repo of REPOS) {
+    try {
+      const { data } = await axios.get(
+        'https://api.github.com/repos/' + org + '/' + repo + '/pulls',
+        { headers: ghHeaders(), params: { state: 'open', per_page: 50 } }
+      );
+      const assigned = data.filter((pr) =>
+        pr.requested_reviewers.some((r) => r.login.toLowerCase() === username)
+      );
+      for (const pr of assigned) {
+        results.push({ repo, pr });
+      }
+    } catch (err) {
+      const status = err.response && err.response.status;
+      if (status === 404) continue;
+      throw err;
+    }
+  }
+  return results;
 }
 
 async function approvePR(repo, prNumber, comment) {
@@ -623,7 +651,7 @@ function displayCIStatus(ciStatus) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-async function run(input, approve = false) {
+async function run(input, approve = false, noAi = false) {
   validateEnv();
   
   const org = process.env.GITHUB_ORG;
@@ -691,6 +719,44 @@ async function run(input, approve = false) {
   // displayFilesSummary(files);
   // displayCodeDiff(files);
   
+  // --no-ai mode: output raw PR data + diffs for the agent to review
+  if (noAi) {
+    console.log('');
+    console.log('__RAW_REVIEW_DATA_START__');
+    console.log(JSON.stringify({
+      pr: {
+        number: pr.number,
+        title: pr.title,
+        body: pr.body,
+        state: pr.state,
+        user: pr.user,
+        head: pr.head,
+        base: pr.base,
+        changed_files: pr.changed_files,
+        additions: pr.additions,
+        deletions: pr.deletions,
+        commits: pr.commits,
+        url: pr.url,
+      },
+      files: files.map(f => ({
+        filename: f.filename,
+        status: f.status,
+        additions: f.additions,
+        deletions: f.deletions,
+        patch: f.patch,
+      })),
+    }));
+    console.log('__RAW_REVIEW_DATA_END__');
+    
+    // Still check merge/CI status
+    const mergeStatus = await checkMergeable(repo, prNumber);
+    const ciStatus = await fetchCIStatus(repo, prNumber);
+    console.log('__STATUS__');
+    console.log(JSON.stringify({ mergeStatus, ciStatus }));
+    console.log('__STATUS_END__');
+    return;
+  }
+  
   // Perform AI-powered review if enabled
   const aiEnabled = validateAIEnv();
   let aiReviewText = '';
@@ -740,26 +806,58 @@ async function run(input, approve = false) {
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
 const args = process.argv.slice(2);
-const approveIndex = args.indexOf('--approve');
-const approve = approveIndex !== -1;
+const approve = args.includes('--approve');
+const noAi = args.includes('--no-ai');
+const listAll = args.includes('--all');
 
-// Remove --approve flag from args if present
-if (approveIndex !== -1) {
-  args.splice(approveIndex, 1);
+const positional = args.filter((a) => !a.startsWith('--'));
+const input = positional[0];
+
+if (!input && !listAll) {
+  // No input = list all assigned PRs
+  (async () => {
+    validateEnv();
+    const assigned = await fetchAssignedPRs();
+    if (assigned.length === 0) {
+      console.log('No open PRs assigned to you for review.');
+      return;
+    }
+    console.log('__ASSIGNED_PRS_START__');
+    console.log(JSON.stringify(assigned.map(({ repo, pr }) => ({
+      repo,
+      number: pr.number,
+      title: pr.title,
+      author: pr.user.login,
+      head: pr.head.ref,
+      base: pr.base.ref,
+      url: pr.html_url,
+    }))));
+    console.log('__ASSIGNED_PRS_END__');
+  })().catch((err) => {
+    console.error('Error: ' + err.message);
+    process.exit(1);
+  });
+} else if (listAll) {
+  // --all: review every assigned PR
+  (async () => {
+    validateEnv();
+    const assigned = await fetchAssignedPRs();
+    if (assigned.length === 0) {
+      console.log('No open PRs assigned to you for review.');
+      return;
+    }
+    console.log('Found ' + assigned.length + ' PR(s) assigned for review.');
+    for (const { repo, pr } of assigned) {
+      console.log('');
+      await run(pr.html_url, approve, true);
+    }
+  })().catch((err) => {
+    console.error('Error: ' + err.message);
+    process.exit(1);
+  });
+} else {
+  run(input, approve, noAi).catch((err) => {
+    console.error('Error: ' + err.message);
+    process.exit(1);
+  });
 }
-
-const input = args[0];
-
-if (!input) {
-  console.error('Usage: node scripts/review-pr.js <ticket-or-url> [--approve]');
-  console.error('Examples:');
-  console.error('  node scripts/review-pr.js AINEX-27');
-  console.error('  node scripts/review-pr.js https://github.com/org/repo/pull/123');
-  console.error('  node scripts/review-pr.js AINEX-27 --approve  (approve after review)');
-  process.exit(1);
-}
-
-run(input, approve).catch((err) => {
-  console.error('Error: ' + err.message);
-  process.exit(1);
-});

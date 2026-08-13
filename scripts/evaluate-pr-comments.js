@@ -200,52 +200,167 @@ async function fetchPRComments(repo, prNumber) {
   const comments = [];
   
   try {
-    // Fetch review comments (inline file comments)
-    const { data: reviewComments } = await axios.get(
-      'https://api.github.com/repos/' + org + '/' + repo + '/pulls/' + prNumber + '/comments',
-      { headers: ghHeaders(), params: { per_page: 100 } }
-    );
-    
-    for (const comment of reviewComments) {
-      comments.push({
-        id: comment.id,
-        type: 'review_comment',
-        user: comment.user.login,
-        userType: comment.user.type,
-        body: comment.body,
-        file: comment.path || '(no file)',
-        line: comment.line || comment.original_line || null,
-        createdAt: comment.created_at,
-      });
-    }
-    
-    // Fetch review summaries
-    const { data: reviews } = await axios.get(
-      'https://api.github.com/repos/' + org + '/' + repo + '/pulls/' + prNumber + '/reviews',
-      { headers: ghHeaders(), params: { per_page: 100 } }
-    );
-    
-    for (const review of reviews) {
-      if (review.body && review.body.trim()) {
-        comments.push({
-          id: review.id,
-          type: 'review',
-          user: review.user.login,
-          userType: review.user.type,
-          body: review.body,
-          file: '(review summary)',
-          line: null,
-          createdAt: review.submitted_at,
-        });
+    // Use GraphQL API to fetch comments with resolved status
+    // This is the most reliable way to check if conversations are resolved
+    const graphqlQuery = `
+      query($owner: String!, $repo: String!, $number: Int!) {
+        repository(owner: $owner, name: $repo) {
+          pullRequest(number: $number) {
+            reviewThreads(first: 100) {
+              nodes {
+                id
+                isResolved
+                comments(first: 100) {
+                  nodes {
+                    id
+                    databaseId
+                    author {
+                      login
+                      ... on Bot {
+                        __typename
+                      }
+                    }
+                    body
+                    path
+                    line
+                    createdAt
+                  }
+                }
+              }
+            }
+            reviews(first: 100) {
+              nodes {
+                id
+                databaseId
+                author {
+                  login
+                  ... on Bot {
+                    __typename
+                  }
+                }
+                body
+                createdAt
+              }
+            }
+          }
+        }
       }
+    `;
+    
+    const { data: graphqlData } = await axios.post(
+      'https://api.github.com/graphql',
+      {
+        query: graphqlQuery,
+        variables: { owner: org, repo: repo, number: parseInt(prNumber) }
+      },
+      { headers: { ...ghHeaders(), 'Content-Type': 'application/json' } }
+    );
+    
+    if (graphqlData && graphqlData.data && graphqlData.data.repository && graphqlData.data.repository.pullRequest) {
+      const pr = graphqlData.data.repository.pullRequest;
+      
+      // Process review threads (inline comments with resolution status)
+      if (pr.reviewThreads && pr.reviewThreads.nodes) {
+        for (const thread of pr.reviewThreads.nodes) {
+          // Skip resolved threads
+          if (thread.isResolved) {
+            continue;
+          }
+          
+          // Add unresolved comments from this thread
+          if (thread.comments && thread.comments.nodes) {
+            for (const comment of thread.comments.nodes) {
+              if (!comment.author) continue;
+              
+              comments.push({
+                id: comment.databaseId,
+                type: 'review_comment',
+                user: comment.author.login,
+                userType: comment.author.__typename === 'Bot' ? 'Bot' : 'User',
+                body: comment.body,
+                file: comment.path || '(no file)',
+                line: comment.line || null,
+                createdAt: comment.createdAt,
+              });
+            }
+          }
+        }
+      }
+      
+      // Process review summaries (don't have resolution status)
+      if (pr.reviews && pr.reviews.nodes) {
+        for (const review of pr.reviews.nodes) {
+          if (review.body && review.body.trim() && review.author) {
+            comments.push({
+              id: review.databaseId,
+              type: 'review',
+              user: review.author.login,
+              userType: review.author.__typename === 'Bot' ? 'Bot' : 'User',
+              body: review.body,
+              file: '(review summary)',
+              line: null,
+              createdAt: review.createdAt,
+            });
+          }
+        }
+      }
+    } else {
+      throw new Error('Invalid GraphQL response structure');
     }
     
     return comments;
   } catch (err) {
-    const status = err.response && err.response.status;
-    if (status === 401) throw new Error('GitHub authentication failed. Check GITHUB_PAT.');
-    if (status === 404) throw new Error('Comments not found for PR #' + prNumber + ' in ' + org + '/' + repo + '.');
-    throw new Error('GitHub API error (' + (status || 'network') + '): ' + err.message);
+    // If GraphQL fails, fall back to REST API (but won't filter resolved comments)
+    console.warn('  Note: Could not use GraphQL API to check resolved status, falling back to REST API');
+    console.warn('  (Resolved comments will be included)');
+    
+    try {
+      const { data: reviewComments } = await axios.get(
+        'https://api.github.com/repos/' + org + '/' + repo + '/pulls/' + prNumber + '/comments',
+        { headers: ghHeaders(), params: { per_page: 100 } }
+      );
+      
+      for (const comment of reviewComments) {
+        comments.push({
+          id: comment.id,
+          type: 'review_comment',
+          user: comment.user.login,
+          userType: comment.user.type,
+          body: comment.body,
+          file: comment.path || '(no file)',
+          line: comment.line || comment.original_line || null,
+          createdAt: comment.created_at,
+        });
+      }
+      
+      // Fetch review summaries
+      const { data: reviews } = await axios.get(
+        'https://api.github.com/repos/' + org + '/' + repo + '/pulls/' + prNumber + '/reviews',
+        { headers: ghHeaders(), params: { per_page: 100 } }
+      );
+      
+      for (const review of reviews) {
+        if (review.body && review.body.trim()) {
+          comments.push({
+            id: review.id,
+            type: 'review',
+            user: review.user.login,
+            userType: review.user.type,
+            body: review.body,
+            file: '(review summary)',
+            line: null,
+            createdAt: review.submitted_at,
+          });
+        }
+      }
+      
+      return comments;
+    } catch (fallbackErr) {
+      const status = fallbackErr.response && fallbackErr.response.status;
+      if (status === 401) throw new Error('GitHub authentication failed. Check GITHUB_PAT.');
+      if (status === 404) throw new Error('Comments not found for PR #' + prNumber + ' in ' + org + '/' + repo + '.');
+      throw new Error('GitHub API error (' + (status || 'network') + '): ' + fallbackErr.message);
+    }
   }
 }
 
@@ -688,10 +803,10 @@ function generateTextReport(pr, evaluations) {
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
-async function run(input) {
+async function run(input, noAi = false) {
   validateEnv();
   
-  if (!validateAIEnv()) {
+  if (!noAi && !validateAIEnv()) {
     throw new Error('AI provider configuration required. See .env.example for setup instructions.');
   }
   
@@ -724,8 +839,9 @@ async function run(input) {
   
   // Fetch comments
   console.log('\nFetching PR comments...');
+  console.log('  (Skipping resolved conversations)');
   const allComments = await fetchPRComments(repo, prNumber);
-  console.log('  Found ' + allComments.length + ' total comment(s)');
+  console.log('  Found ' + allComments.length + ' unresolved comment(s)');
   
   // Filter for Copilot comments
   const copilotComments = filterCopilotComments(allComments);
@@ -736,6 +852,25 @@ async function run(input) {
     console.log('✓ No Copilot comments found in this PR.');
     console.log('  This PR has no automated code review suggestions to evaluate.');
     console.log('');
+    return;
+  }
+  
+  // --no-ai mode: output raw comments for the agent to evaluate
+  if (noAi) {
+    console.log('');
+    console.log('__RAW_COMMENTS_DATA_START__');
+    console.log(JSON.stringify({
+      pr: { number: pr.number, title: pr.title, state: pr.state, url: pr.url },
+      comments: copilotComments.map(c => ({
+        id: c.id,
+        user: c.user,
+        type: c.type,
+        file: c.file,
+        line: c.line,
+        body: c.body,
+      })),
+    }));
+    console.log('__RAW_COMMENTS_DATA_END__');
     return;
   }
   
@@ -765,17 +900,23 @@ async function run(input) {
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
 const args = process.argv.slice(2);
+const noAiIndex = args.indexOf('--no-ai');
+const noAi = noAiIndex !== -1;
+
+if (noAiIndex !== -1) args.splice(noAiIndex, 1);
+
 const input = args[0];
 
 if (!input) {
-  console.error('Usage: node scripts/evaluate-pr-comments.js <ticket-or-url>');
+  console.error('Usage: node scripts/evaluate-pr-comments.js <ticket-or-url> [--no-ai]');
   console.error('Examples:');
   console.error('  node scripts/evaluate-pr-comments.js AINEX-27');
   console.error('  node scripts/evaluate-pr-comments.js https://github.com/org/repo/pull/123');
+  console.error('  node scripts/evaluate-pr-comments.js AINEX-27 --no-ai  (output raw data for agent)');
   process.exit(1);
 }
 
-run(input).catch((err) => {
+run(input, noAi).catch((err) => {
   console.error('Error: ' + err.message);
   process.exit(1);
 });
