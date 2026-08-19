@@ -4,3 +4,5 @@ dist/
 build/*.ico
 build/*.icns
 build/*.png
+/tmp-review-ainex-102
+*.txt
